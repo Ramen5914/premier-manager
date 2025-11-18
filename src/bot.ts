@@ -1,11 +1,8 @@
-import { IntentsBitField, type Interaction, type Message } from "discord.js";
-import { Client } from "discordx";
+import { IntentsBitField, type Interaction, type Message } from 'discord.js';
+import { Client } from 'discordx';
 
 export const bot = new Client({
-  // To use only guild command
   // botGuilds: [(client) => client.guilds.cache.map((guild) => guild.id)],
-
-  // Discord intents
   intents: [
     IntentsBitField.Flags.Guilds,
     IntentsBitField.Flags.GuildMembers,
@@ -14,21 +11,16 @@ export const bot = new Client({
     IntentsBitField.Flags.GuildVoiceStates,
     IntentsBitField.Flags.MessageContent,
   ],
-
-  // Debug logs are disabled in silent mode
   silent: false,
 
   // Configuration for @SimpleCommand
   simpleCommand: {
-    prefix: "!",
+    prefix: '!',
   },
 });
 
-bot.once("ready", () => {
-  // Make sure all guilds are cached
+bot.once('clientReady', async () => {
   // await bot.guilds.fetch();
-
-  // Synchronize applications commands with Discord
   void bot.initApplicationCommands();
 
   // To clear all guild commands, uncomment this line,
@@ -39,13 +31,13 @@ bot.once("ready", () => {
   //    ...bot.guilds.cache.map((g) => g.id)
   //  );
 
-  console.log("Bot started");
+  // console.log('Bot started');
 });
 
-bot.on("interactionCreate", (interaction: Interaction) => {
+bot.on('interactionCreate', (interaction: Interaction) => {
   bot.executeInteraction(interaction);
 });
 
-bot.on("messageCreate", (message: Message) => {
+bot.on('messageCreate', (message: Message) => {
   void bot.executeCommand(message);
 });
