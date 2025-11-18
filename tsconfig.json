@@ -1,18 +1,31 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "outDir": "build",
-    "rootDir": "src",
-    "strict": true,
-    "moduleResolution": "Node",
-    "allowSyntheticDefaultImports": true,
-
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "resolvePackageJsonExports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": false,
-
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "incremental": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "noFallthroughCasesInSwitch": false,
+    "noUnusedLocals": true,
+    "strict": true,
+    "pretty": true,
+    "composite": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
-  "exclude": ["build", "node_modules"]
+  "exclude": ["node_modules", "dist", "eslint.config.ts"]
 }
