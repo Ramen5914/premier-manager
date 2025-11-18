@@ -1,14 +1,17 @@
 // import { CronJob } from 'cron';
 import {
+  ApplicationCommandOptionType,
+  type Channel,
   CommandInteraction,
   LabelBuilder,
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  type Role,
   TextDisplayBuilder,
   TextInputStyle,
 } from 'discord.js';
-import { Discord, Guard, ModalComponent, Slash } from 'discordx';
+import { Discord, Guard, ModalComponent, Slash, SlashOption } from 'discordx';
 import Enmap from 'enmap';
 import { IsAdmin } from '../guards/admin.js';
 import { IsManager } from '../guards/manager.js';
@@ -87,6 +90,114 @@ export class Setup {
         ),
       ],
       flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
+    });
+  }
+
+  @Slash({
+    description: 'Set the channels for announcements, matches, and practices',
+  })
+  @Guard(OrGuard(IsManager, IsAdmin))
+  async channels(
+    @SlashOption({
+      description: 'Announcement channel',
+      name: 'announcements',
+      required: false,
+      type: ApplicationCommandOptionType.Channel,
+    })
+    announcementChannel: Channel | undefined,
+    @SlashOption({
+      description: 'Match channel',
+      name: 'match',
+      required: false,
+      type: ApplicationCommandOptionType.Channel,
+    })
+    matchChannel: Channel | undefined,
+    @SlashOption({
+      description: 'Practice channel',
+      name: 'practice',
+      required: false,
+      type: ApplicationCommandOptionType.Channel,
+    })
+    practiceChannel: Channel | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (announcementChannel) {
+      this.db.set('announcementChannel', announcementChannel.toString());
+    }
+    if (matchChannel) {
+      this.db.set('matchChannel', matchChannel.toString());
+    }
+    if (practiceChannel) {
+      this.db.set('practiceChannel', practiceChannel.toString());
+    }
+
+    interaction.reply({
+      components: [
+        new TextDisplayBuilder().setContent(
+          `Announcement channel set to: ${this.db.get('announcementChannel') || 'None'}`,
+        ),
+        new TextDisplayBuilder().setContent(
+          `Matches channel set to: ${this.db.get('matchChannel') || 'None'}`,
+        ),
+        new TextDisplayBuilder().setContent(
+          `Practice channel set to: ${this.db.get('practiceChannel') || 'None'}`,
+        ),
+      ],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+    });
+  }
+
+  @Slash({
+    description: 'Set the channels for announcements, matches, and practices',
+  })
+  @Guard(OrGuard(IsManager, IsAdmin))
+  async roles(
+    @SlashOption({
+      description: 'Owner role',
+      name: 'owner',
+      required: false,
+      type: ApplicationCommandOptionType.Role,
+    })
+    ownerRole: Role | undefined,
+    @SlashOption({
+      description: 'Captain role',
+      name: 'captain',
+      required: false,
+      type: ApplicationCommandOptionType.Role,
+    })
+    captainRole: Role | undefined,
+    @SlashOption({
+      description: 'Team role',
+      name: 'team',
+      required: false,
+      type: ApplicationCommandOptionType.Role,
+    })
+    teamRole: Role | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (ownerRole) {
+      this.db.set('ownerRoleId', ownerRole.toString());
+    }
+    if (captainRole) {
+      this.db.set('captainRoleId', captainRole.toString());
+    }
+    if (teamRole) {
+      this.db.set('teamRoleId', teamRole.toString());
+    }
+
+    interaction.reply({
+      components: [
+        new TextDisplayBuilder().setContent(
+          `Owner role set to: ${this.db.get('ownerRoleId') || 'None'}`,
+        ),
+        new TextDisplayBuilder().setContent(
+          `Captain role set to: ${this.db.get('captainRoleId') || 'None'}`,
+        ),
+        new TextDisplayBuilder().setContent(
+          `Team role set to: ${this.db.get('teamRoleId') || 'None'}`,
+        ),
+      ],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
     });
   }
 }
