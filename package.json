@@ -11,7 +11,7 @@
     "clean:db": "rimraf data",
     "clean:dist": "rimraf dist",
     "dev": "tsx src/dev.ts",
-    "start": "npm run build && node .",
+    "start": "node .",
     "start:dev": "tsc-watch --noColors --onSuccess \"npm run start\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
