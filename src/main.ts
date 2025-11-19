@@ -1,6 +1,7 @@
 import { dirname, importx } from '@discordx/importer';
 import 'dotenv/config';
 import { bot } from './bot.js';
+import { initializeScheduler } from './services/scheduler.js';
 // import Enmap from 'enmap';
 
 async function run() {
@@ -13,6 +14,9 @@ async function run() {
   }
 
   await bot.login(process.env.BOT_TOKEN);
+
+  // Initialize scheduler after bot is logged in
+  initializeScheduler(bot);
 }
 
 void run();
