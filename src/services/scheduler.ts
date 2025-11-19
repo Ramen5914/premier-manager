@@ -227,7 +227,7 @@ async function handleSendError(bot: Client, event: PremierEvent, error: unknown)
   }
 }
 
-async function cleanupOldEvents(): Promise<void> {
+async function cleanupOldEvents(bot: Client): Promise<void> {
   try {
     const scheduledEvents = (db.get('scheduledEvents') as PremierEvent[]) || [];
     const now = Math.floor(Date.now() / 1000);
@@ -235,9 +235,34 @@ async function cleanupOldEvents(): Promise<void> {
     // Filter out events that have ended
     const activeEvents = scheduledEvents.filter((event) => event.endTimestamp > now);
 
-    // Delete responses for ended events
+    // Remove buttons from ended events
     const endedEvents = scheduledEvents.filter((event) => event.endTimestamp <= now);
     for (const event of endedEvents) {
+      // Remove buttons from the message if it exists
+      if (event.messageId) {
+        try {
+          const channelMention =
+            event.type === 'Practice'
+              ? (db.get('practiceChannel') as string)
+              : (db.get('matchChannel') as string);
+          const channelId = channelMention?.replace(/[<>#]/g, '');
+
+          if (channelId) {
+            const channel = (await bot.channels.fetch(channelId)) as TextChannel;
+            if (channel) {
+              const message = await channel.messages.fetch(event.messageId);
+              await message.edit({
+                embeds: message.embeds,
+                components: [], // Remove all buttons
+              });
+            }
+          }
+        } catch (error) {
+          // Message was deleted or channel is inaccessible, continue
+          console.error(`Failed to remove buttons from event ${event.eventId}:`, error);
+        }
+      }
+
       db.delete(`${event.eventId}_responses`);
     }
 
@@ -252,6 +277,31 @@ async function cleanupOldEvents(): Promise<void> {
       const activeEvents = scheduledEvents.filter((event) => event.endTimestamp > now);
       const endedEvents = scheduledEvents.filter((event) => event.endTimestamp <= now);
       for (const event of endedEvents) {
+        // Remove buttons from the message if it exists
+        if (event.messageId) {
+          try {
+            const channelMention =
+              event.type === 'Practice'
+                ? (db.get('practiceChannel') as string)
+                : (db.get('matchChannel') as string);
+            const channelId = channelMention?.replace(/[<>#]/g, '');
+
+            if (channelId) {
+              const channel = (await bot.channels.fetch(channelId)) as TextChannel;
+              if (channel) {
+                const message = await channel.messages.fetch(event.messageId);
+                await message.edit({
+                  embeds: message.embeds,
+                  components: [], // Remove all buttons
+                });
+              }
+            }
+          } catch (removeError) {
+            // Message was deleted or channel is inaccessible, continue
+            console.error(`Failed to remove buttons from event ${event.eventId}:`, removeError);
+          }
+        }
+
         db.delete(`${event.eventId}_responses`);
       }
       db.set('scheduledEvents', activeEvents);
@@ -280,7 +330,7 @@ export function initializeScheduler(bot: Client): void {
   new CronJob(
     '59 23 * * 0',
     () => {
-      void cleanupOldEvents();
+      void cleanupOldEvents(bot);
     },
     null,
     true,
