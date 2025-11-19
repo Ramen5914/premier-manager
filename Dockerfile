@@ -1,5 +1,5 @@
 ## build runner
-FROM node:lts-alpine as build-runner
+FROM node:latest AS build-runner
 
 # Set temp directory
 WORKDIR /tmp/app
@@ -18,10 +18,13 @@ COPY tsconfig.json   .
 RUN npm run build
 
 ## production runner
-FROM node:lts-alpine as prod-runner
+FROM node:latest AS prod-runner
 
 # Set work directory
 WORKDIR /app
+
+# Copy .env file
+COPY .env /app/.env
 
 # Copy package.json from build-runner
 COPY --from=build-runner /tmp/app/package.json /app/package.json
@@ -30,7 +33,7 @@ COPY --from=build-runner /tmp/app/package.json /app/package.json
 RUN npm install --omit=dev
 
 # Move build files
-COPY --from=build-runner /tmp/app/build /app/build
+COPY --from=build-runner /tmp/app/dist /app/dist
 
 # Start bot
 CMD [ "npm", "run", "start" ]
