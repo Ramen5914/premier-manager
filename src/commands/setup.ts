@@ -413,6 +413,12 @@ export class Setup {
         eventId: `${season}-W${weekNumber}-Practice-Wed`,
         rosterAnnouncementMessageId: null,
         messageId: null,
+        threadId: null,
+        threadRosterMessageId: null,
+        preEventReminderSent: false,
+        postMatchPromptMessageId: null,
+        postMatchCountRecorded: false,
+        signupsDisabled: false,
       });
 
       // Thursday Match: 7pm-8pm
@@ -439,6 +445,12 @@ export class Setup {
         eventId: `${season}-W${weekNumber}-Match-Thu`,
         rosterAnnouncementMessageId: null,
         messageId: null,
+        threadId: null,
+        threadRosterMessageId: null,
+        preEventReminderSent: false,
+        postMatchPromptMessageId: null,
+        postMatchCountRecorded: false,
+        signupsDisabled: false,
       });
 
       // Friday Practice: 8pm-9pm
@@ -465,6 +477,12 @@ export class Setup {
         eventId: `${season}-W${weekNumber}-Practice-Fri`,
         rosterAnnouncementMessageId: null,
         messageId: null,
+        threadId: null,
+        threadRosterMessageId: null,
+        preEventReminderSent: false,
+        postMatchPromptMessageId: null,
+        postMatchCountRecorded: false,
+        signupsDisabled: false,
       });
 
       // Saturday Match: 8pm-9pm
@@ -491,6 +509,12 @@ export class Setup {
         eventId: `${season}-W${weekNumber}-Match-Sat`,
         rosterAnnouncementMessageId: null,
         messageId: null,
+        threadId: null,
+        threadRosterMessageId: null,
+        preEventReminderSent: false,
+        postMatchPromptMessageId: null,
+        postMatchCountRecorded: false,
+        signupsDisabled: false,
       });
 
       // Sunday Match: 7pm-8pm
@@ -517,6 +541,12 @@ export class Setup {
         eventId: `${season}-W${weekNumber}-Match-Sun`,
         rosterAnnouncementMessageId: null,
         messageId: null,
+        threadId: null,
+        threadRosterMessageId: null,
+        preEventReminderSent: false,
+        postMatchPromptMessageId: null,
+        postMatchCountRecorded: false,
+        signupsDisabled: false,
       });
     }
 

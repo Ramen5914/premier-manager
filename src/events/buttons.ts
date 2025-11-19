@@ -1,7 +1,8 @@
-import { ButtonInteraction, EmbedBuilder, type GuildMember } from 'discord.js';
+import { ButtonInteraction, EmbedBuilder, PublicThreadChannel, type GuildMember } from 'discord.js';
 import { ButtonComponent, Discord } from 'discordx';
 import Enmap from 'enmap';
 import type { PremierEvent, EventResponses } from '../types/event.js';
+import { debounceRosterEdit, selectRoster, formatRosterMentions } from '../utils/roster.js';
 import { bot } from '../bot.js';
 import { formatEventDate } from '../utils/date.js';
 
@@ -70,6 +71,10 @@ export class EventButtons {
     const event = scheduledEvents.find((e) => e.eventId === eventId);
 
     if (event) {
+      // Prevent match signups if disabled
+      if (event.type === 'Match' && event.signupsDisabled) {
+        return; // silently ignore
+      }
       const updatedEmbed = this.createUpdatedEmbed(event, responses);
 
       await interaction.update({
@@ -78,6 +83,63 @@ export class EventButtons {
 
       // Check for roster announcement
       await this.manageRosterAnnouncement(event, responses, interaction.guildId!);
+      // Update thread roster if thread exists (debounced)
+      if (event.threadId) {
+        debounceRosterEdit(event.eventId, async () => {
+          try {
+            const guild = await bot.guilds.fetch(interaction.guildId!);
+            const thread = await bot.channels.fetch(event.threadId!);
+            if (thread && thread.isThread()) {
+              const responsesLatest = this.db.get(`${event.eventId}_responses`) as EventResponses;
+              const ownerRoleId = (this.db.get('ownerRoleId') as string)?.replace(/[<>@&]/g, '');
+              const captainRoleId = (this.db.get('captainRoleId') as string)?.replace(
+                /[<>@&]/g,
+                '',
+              );
+              const { roster, standby } = await selectRoster(
+                guild,
+                responsesLatest.accepted,
+                ownerRoleId,
+                captainRoleId,
+              );
+              if (event.threadRosterMessageId) {
+                try {
+                  const threadChannel = thread;
+                  const msg = await (threadChannel as PublicThreadChannel).messages.fetch(
+                    event.threadRosterMessageId,
+                  );
+                  await msg.edit('Updated Roster:\n' + formatRosterMentions({ roster, standby }));
+                } catch {
+                  // message missing; send new
+                  const sent = await (thread as PublicThreadChannel).send(
+                    'Updated Roster:\n' + formatRosterMentions({ roster, standby }),
+                  );
+                  event.threadRosterMessageId = sent.id;
+                  const events = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+                  const idx = events.findIndex((e) => e.eventId === event.eventId);
+                  if (idx !== -1) {
+                    events[idx] = event;
+                    this.db.set('scheduledEvents', events);
+                  }
+                }
+              } else {
+                const sent = await (thread as PublicThreadChannel).send(
+                  'Roster:\n' + formatRosterMentions({ roster, standby }),
+                );
+                event.threadRosterMessageId = sent.id;
+                const events = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+                const idx = events.findIndex((e) => e.eventId === event.eventId);
+                if (idx !== -1) {
+                  events[idx] = event;
+                  this.db.set('scheduledEvents', events);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Thread roster update failed:', e);
+          }
+        });
+      }
     }
   }
 

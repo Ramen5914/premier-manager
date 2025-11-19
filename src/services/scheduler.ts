@@ -5,10 +5,14 @@ import {
   EmbedBuilder,
   type Client,
   type TextChannel,
+  type ThreadChannel,
+  PermissionFlagsBits,
 } from 'discord.js';
 import { CronJob } from 'cron';
 import Enmap from 'enmap';
 import type { PremierEvent } from '../types/event.js';
+import { selectRoster, formatRosterMentions } from '../utils/roster.js';
+import { parseSeasonWeek, weekKey } from '../utils/week.js';
 import { formatEventDate } from '../utils/date.js';
 
 const db = new Enmap({ name: 'premier_data' });
@@ -69,14 +73,14 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
                 await existingMessage.edit({
                   content: `${teamRoleId}`,
                   embeds: [createEventEmbed(event)],
-                  components: [createEventButtons(event.eventId)],
+                  components: [createEventButtons(event)],
                 });
               } catch {
                 // Message was deleted, send new one
                 const message = await practiceChannel.send({
                   content: `${teamRoleId}`,
                   embeds: [createEventEmbed(event)],
-                  components: [createEventButtons(event.eventId)],
+                  components: [createEventButtons(event)],
                 });
                 event.messageId = message.id;
               }
@@ -85,7 +89,7 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
               const message = await practiceChannel.send({
                 content: `${teamRoleId}`,
                 embeds: [createEventEmbed(event)],
-                components: [createEventButtons(event.eventId)],
+                components: [createEventButtons(event)],
               });
               event.messageId = message.id;
             }
@@ -109,14 +113,14 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
                 await existingMessage.edit({
                   content: `${teamRoleId}`,
                   embeds: [createEventEmbed(event)],
-                  components: [createEventButtons(event.eventId)],
+                  components: [createEventButtons(event)],
                 });
               } catch {
                 // Message was deleted, send new one
                 const message = await matchChannel.send({
                   content: `${teamRoleId}`,
                   embeds: [createEventEmbed(event)],
-                  components: [createEventButtons(event.eventId)],
+                  components: [createEventButtons(event)],
                 });
                 event.messageId = message.id;
               }
@@ -125,7 +129,7 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
               const message = await matchChannel.send({
                 content: `${teamRoleId}`,
                 embeds: [createEventEmbed(event)],
-                components: [createEventButtons(event.eventId)],
+                components: [createEventButtons(event)],
               });
               event.messageId = message.id;
             }
@@ -189,20 +193,24 @@ function createEventEmbed(event: PremierEvent): EmbedBuilder {
   return embed;
 }
 
-function createEventButtons(eventId: string): ActionRowBuilder<ButtonBuilder> {
+function createEventButtons(event: PremierEvent): ActionRowBuilder<ButtonBuilder> {
+  const disabled = event.type === 'Match' && event.signupsDisabled;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`accept-${eventId}`)
+      .setCustomId(`accept-${event.eventId}`)
       .setLabel('✅ Accepted')
-      .setStyle(ButtonStyle.Success),
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled),
     new ButtonBuilder()
-      .setCustomId(`decline-${eventId}`)
+      .setCustomId(`decline-${event.eventId}`)
       .setLabel('❌ Declined')
-      .setStyle(ButtonStyle.Danger),
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled),
     new ButtonBuilder()
-      .setCustomId(`tentative-${eventId}`)
+      .setCustomId(`tentative-${event.eventId}`)
       .setLabel('❓ Tentative')
-      .setStyle(ButtonStyle.Primary),
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled),
   );
 }
 
@@ -235,7 +243,7 @@ async function cleanupOldEvents(bot: Client): Promise<void> {
     // Filter out events that have ended
     const activeEvents = scheduledEvents.filter((event) => event.endTimestamp > now);
 
-    // Remove buttons from ended events
+    // Remove buttons from ended events & archive threads
     const endedEvents = scheduledEvents.filter((event) => event.endTimestamp <= now);
     for (const event of endedEvents) {
       // Remove buttons from the message if it exists
@@ -264,6 +272,20 @@ async function cleanupOldEvents(bot: Client): Promise<void> {
       }
 
       db.delete(`${event.eventId}_responses`);
+      // Archive thread
+      if (event.threadId) {
+        try {
+          const thread = await bot.channels.fetch(event.threadId);
+          if (thread && thread.isThread()) {
+            const tc = thread as ThreadChannel;
+            if (!tc.archived) await tc.setArchived(true, 'Event ended');
+          }
+        } catch (e) {
+          console.error('Failed to archive thread', event.eventId, e);
+        }
+        event.threadId = null;
+        persistEvent(event);
+      }
     }
 
     // Update scheduled events
@@ -303,6 +325,19 @@ async function cleanupOldEvents(bot: Client): Promise<void> {
         }
 
         db.delete(`${event.eventId}_responses`);
+        if (event.threadId) {
+          try {
+            const thread = await bot.channels.fetch(event.threadId);
+            if (thread && thread.isThread()) {
+              const tc = thread as ThreadChannel;
+              if (!tc.archived) await tc.setArchived(true, 'Event ended');
+            }
+          } catch (e) {
+            console.error('Failed to archive thread', event.eventId, e);
+          }
+          event.threadId = null;
+          persistEvent(event);
+        }
       }
       db.set('scheduledEvents', activeEvents);
     } catch (retryError) {
@@ -314,6 +349,8 @@ async function cleanupOldEvents(bot: Client): Promise<void> {
 export function initializeScheduler(bot: Client): void {
   // Run announcements immediately on startup
   void sendEventAnnouncements(bot);
+  // Schedule per-event timers after announcements
+  scheduleAll(bot);
 
   // Schedule announcements for every Monday at midnight PST
   new CronJob(
@@ -338,4 +375,247 @@ export function initializeScheduler(bot: Client): void {
   );
 
   console.log('Scheduler initialized');
+}
+
+// ---- Added advanced scheduling & helper logic ----
+const scheduledTimeouts = new Map<string, NodeJS.Timeout[]>();
+
+function getResponses(event: PremierEvent): {
+  accepted: string[];
+  declined: string[];
+  tentative: string[];
+} {
+  return (
+    (db.get(`${event.eventId}_responses`) as {
+      accepted: string[];
+      declined: string[];
+      tentative: string[];
+    }) || { accepted: [], declined: [], tentative: [] }
+  );
+}
+
+function persistEvent(event: PremierEvent): void {
+  const events = (db.get('scheduledEvents') as PremierEvent[]) || [];
+  const idx = events.findIndex((e) => e.eventId === event.eventId);
+  if (idx !== -1) {
+    events[idx] = event;
+    db.set('scheduledEvents', events);
+  }
+}
+
+async function dmOwner(bot: Client, content: string): Promise<void> {
+  try {
+    const ownerRoleMention = db.get('ownerRoleId') as string;
+    const ownerRoleId = ownerRoleMention?.replace(/[<>@&]/g, '');
+    for (const [, g] of bot.guilds.cache) {
+      try {
+        const role = ownerRoleId ? g.roles.cache.get(ownerRoleId) : null;
+        if (role) {
+          const member = role.members.first();
+          if (member) {
+            await member.send(content);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('DM owner attempt failed:', e);
+      }
+    }
+  } catch (e) {
+    console.error('Failed DM owner:', e);
+  }
+}
+
+async function createEventThread(bot: Client, event: PremierEvent): Promise<ThreadChannel | null> {
+  if (event.threadId) {
+    try {
+      const thread = await bot.channels.fetch(event.threadId);
+      return thread as ThreadChannel;
+    } catch {
+      // recreate
+    }
+  }
+  const channelMention =
+    event.type === 'Practice'
+      ? (db.get('practiceChannel') as string)
+      : (db.get('matchChannel') as string);
+  const channelId = channelMention?.replace(/[<>#]/g, '');
+  if (!channelId || !event.messageId) return null;
+  const channel = (await bot.channels.fetch(channelId)) as TextChannel;
+  if (!channel) return null;
+  const perms = channel.permissionsFor(bot.user!.id);
+  if (!perms || !perms.has(PermissionFlagsBits.CreatePublicThreads)) {
+    await dmOwner(bot, `Missing CreatePublicThreads permission for event ${event.eventId}.`);
+    return null;
+  }
+  try {
+    const parentMessage = await channel.messages.fetch(event.messageId);
+    const thread = await parentMessage.startThread({
+      name: `W${event.week}-${event.type}-${event.day}`,
+    });
+    event.threadId = thread.id;
+    persistEvent(event);
+    return thread;
+  } catch (err) {
+    console.error('Failed to create thread:', err);
+    await dmOwner(
+      bot,
+      `Failed to create thread for event ${event.eventId}: ${(err as Error).message}`,
+    );
+    return null;
+  }
+}
+
+async function sendOneHourRoster(bot: Client, event: PremierEvent): Promise<void> {
+  const responses = getResponses(event);
+  if (responses.accepted.length < 5) return; // need at least 5
+  const thread = await createEventThread(bot, event);
+  if (!thread) return;
+  const ownerRoleId = (db.get('ownerRoleId') as string)?.replace(/[<>@&]/g, '');
+  const captainRoleId = (db.get('captainRoleId') as string)?.replace(/[<>@&]/g, '');
+  const { roster, standby } = await selectRoster(
+    thread.guild,
+    responses.accepted,
+    ownerRoleId,
+    captainRoleId,
+  );
+  const message =
+    `1 Hour Reminder for <t:${event.startTimestamp}:F>\n` +
+    formatRosterMentions({ roster, standby });
+  const sent = await thread.send(message);
+  event.threadRosterMessageId = sent.id;
+  persistEvent(event);
+}
+
+async function sendFifteenMinuteReminder(bot: Client, event: PremierEvent): Promise<void> {
+  const responses = getResponses(event);
+  if (responses.accepted.length < 5 && !event.threadId) return; // still insufficient & no thread
+  const thread = await createEventThread(bot, event);
+  if (!thread) return;
+  const ownerRoleId = (db.get('ownerRoleId') as string)?.replace(/[<>@&]/g, '');
+  const captainRoleId = (db.get('captainRoleId') as string)?.replace(/[<>@&]/g, '');
+  const { roster, standby } = await selectRoster(
+    thread.guild,
+    responses.accepted,
+    ownerRoleId,
+    captainRoleId,
+  );
+  const message =
+    `15 Minute Reminder for <t:${event.startTimestamp}:F>\n` +
+    formatRosterMentions({ roster, standby });
+  await thread.send(message);
+  event.preEventReminderSent = true;
+  persistEvent(event);
+}
+
+async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<void> {
+  if (event.type !== 'Match') return;
+  const info = parseSeasonWeek(event.eventId);
+  if (!info) return;
+  const currentCount = (db.get(weekKey(info.season, info.week)) as number) || 0;
+  if (currentCount >= 2) return; // already max
+  const thread = await createEventThread(bot, event);
+  if (!thread) return;
+  const perms = thread.permissionsFor(bot.user!.id);
+  if (!perms || !perms.has(PermissionFlagsBits.AddReactions)) {
+    await dmOwner(
+      bot,
+      `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
+    );
+  }
+  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played this week.');
+  event.postMatchPromptMessageId = msg.id;
+  persistEvent(event);
+  try {
+    await msg.react('0️⃣');
+    await msg.react('1️⃣');
+    await msg.react('2️⃣');
+  } catch (e) {
+    console.error('Failed adding reactions:', e);
+  }
+}
+
+function applyFallbackMatchCount(event: PremierEvent): void {
+  if (event.type !== 'Match' || event.postMatchCountRecorded) return;
+  const info = parseSeasonWeek(event.eventId);
+  if (!info) return;
+  const key = weekKey(info.season, info.week);
+  const current = (db.get(key) as number) || 0;
+  if (current >= 2) return;
+  db.set(key, 2);
+  event.postMatchCountRecorded = true;
+  event.signupsDisabled = true;
+  persistEvent(event);
+}
+
+function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {
+  const now = Math.floor(Date.now() / 1000);
+  const timeouts: NodeJS.Timeout[] = [];
+  const oneHour = event.startTimestamp - 3600;
+  if (oneHour > now) {
+    timeouts.push(
+      setTimeout(
+        () => {
+          void sendOneHourRoster(bot, event);
+        },
+        (oneHour - now) * 1000,
+      ),
+    );
+  } else if (event.startTimestamp > now && !event.threadId) {
+    void sendOneHourRoster(bot, event);
+  }
+  const fifteen = event.startTimestamp - 900;
+  if (fifteen > now) {
+    timeouts.push(
+      setTimeout(
+        () => {
+          void sendFifteenMinuteReminder(bot, event);
+        },
+        (fifteen - now) * 1000,
+      ),
+    );
+  } else if (event.startTimestamp > now && !event.preEventReminderSent) {
+    void sendFifteenMinuteReminder(bot, event);
+  }
+  if (event.type === 'Match') {
+    if (event.endTimestamp > now) {
+      timeouts.push(
+        setTimeout(
+          () => {
+            void sendPostMatchPrompt(bot, event);
+          },
+          (event.endTimestamp - now) * 1000,
+        ),
+      );
+      const fallbackTs = event.endTimestamp + 3600;
+      if (fallbackTs > now) {
+        timeouts.push(
+          setTimeout(
+            () => {
+              applyFallbackMatchCount(event);
+            },
+            (fallbackTs - now) * 1000,
+          ),
+        );
+      }
+    } else {
+      const fallbackTs = event.endTimestamp + 3600;
+      if (fallbackTs > now) {
+        timeouts.push(
+          setTimeout(
+            () => {
+              applyFallbackMatchCount(event);
+            },
+            (fallbackTs - now) * 1000,
+          ),
+        );
+      }
+    }
+  }
+  if (timeouts.length > 0) scheduledTimeouts.set(event.eventId, timeouts);
+}
+
+function scheduleAll(bot: Client): void {
+  const events = (db.get('scheduledEvents') as PremierEvent[]) || [];
+  for (const e of events) scheduleTimersForEvent(bot, e);
 }

@@ -8,6 +8,15 @@ export interface PremierEvent {
   eventId: string;
   rosterAnnouncementMessageId: string | null;
   messageId: string | null;
+  // Thread + pre-event reminder tracking
+  threadId: string | null;
+  threadRosterMessageId: string | null;
+  preEventReminderSent: boolean;
+  // Post-match prompt & result tracking
+  postMatchPromptMessageId: string | null;
+  postMatchCountRecorded: boolean; // true once a reaction or fallback sets match count
+  // Signup control for remaining week matches
+  signupsDisabled: boolean; // when true, disable Accept/Decline for this match
 }
 
 export interface EventResponses {
