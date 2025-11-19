@@ -12,6 +12,12 @@ export class Slashes {
   @Slash({ description: 'Gets the current settings for the bot' })
   @Guard(OrGuard(IsManager, IsAdmin))
   async status(interaction: CommandInteraction): Promise<void> {
+    const maps = (this.db.get('maps') as string[]) || [];
+    const mapsDisplay =
+      maps.length > 0
+        ? maps.map((map, index) => `Week ${index + 1}: **${map}**`).join('\n')
+        : 'Not set';
+
     const embed = new EmbedBuilder()
       .setTitle('Current Bot Settings')
       .setColor(0x98c379)
@@ -62,6 +68,11 @@ export class Slashes {
           inline: true,
         },
       )
+      .addFields({
+        name: 'Map Order',
+        value: mapsDisplay,
+        inline: false,
+      })
       .setTimestamp();
 
     await interaction.reply({
