@@ -194,7 +194,9 @@ function createEventEmbed(event: PremierEvent): EmbedBuilder {
 }
 
 function createEventButtons(event: PremierEvent): ActionRowBuilder<ButtonBuilder> {
-  const disabled = event.type === 'Match' && event.signupsDisabled;
+  // Buttons should remain enabled until the event has actually ended
+  const now = Math.floor(Date.now() / 1000);
+  const disabled = now >= event.endTimestamp; // disable only after event passes
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`accept-${event.eventId}`)
