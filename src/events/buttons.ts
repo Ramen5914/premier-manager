@@ -71,10 +71,10 @@ export class EventButtons {
     const event = scheduledEvents.find((e) => e.eventId === eventId);
 
     if (event) {
-      // Only block responses after the event has ended
+      // Block responses after event has ended or if match signups disabled (2 matches reached)
       const now = Math.floor(Date.now() / 1000);
-      if (now >= event.endTimestamp) {
-        return; // event concluded; ignore further interactions
+      if (now >= event.endTimestamp || (event.type === 'Match' && event.signupsDisabled)) {
+        return; // silently ignore
       }
       const updatedEmbed = this.createUpdatedEmbed(event, responses);
 

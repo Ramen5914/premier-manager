@@ -27,18 +27,18 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
       const eventDate = new Date(event.startTimestamp * 1000);
       const currentDate = new Date();
 
-      // Get Monday of the event's week
-      const eventMonday = new Date(eventDate);
-      eventMonday.setDate(eventDate.getDate() - ((eventDate.getDay() + 6) % 7));
-      eventMonday.setHours(0, 0, 0, 0);
-
       // Get Monday of current week
       const currentMonday = new Date(currentDate);
       currentMonday.setDate(currentDate.getDate() - ((currentDate.getDay() + 6) % 7));
       currentMonday.setHours(0, 0, 0, 0);
 
-      // Same week and event hasn't ended
-      return eventMonday.getTime() === currentMonday.getTime() && event.endTimestamp > now;
+      // Get Sunday (end of current week)
+      const currentSunday = new Date(currentMonday);
+      currentSunday.setDate(currentMonday.getDate() + 6);
+      currentSunday.setHours(23, 59, 59, 999);
+
+      // Event starts within current week (Mon-Sun) and hasn't ended
+      return eventDate >= currentMonday && eventDate <= currentSunday && event.endTimestamp > now;
     });
 
     if (currentEvents.length === 0) {
@@ -195,8 +195,9 @@ function createEventEmbed(event: PremierEvent): EmbedBuilder {
 
 function createEventButtons(event: PremierEvent): ActionRowBuilder<ButtonBuilder> {
   // Buttons should remain enabled until the event has actually ended
+  // For matches, also disable if signupsDisabled (2 matches reached this week)
   const now = Math.floor(Date.now() / 1000);
-  const disabled = now >= event.endTimestamp; // disable only after event passes
+  const disabled = now >= event.endTimestamp || (event.type === 'Match' && event.signupsDisabled);
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`accept-${event.eventId}`)
