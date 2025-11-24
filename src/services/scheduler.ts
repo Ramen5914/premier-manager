@@ -551,7 +551,7 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
       `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
     );
   }
-  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played today.');
+  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played this week.');
   event.postMatchPromptMessageId = msg.id;
   persistEvent(event);
   try {
@@ -561,36 +561,6 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
   } catch (e) {
     console.error('Failed adding reactions:', e);
   }
-}
-
-function applyFallbackMatchCount(event: PremierEvent): void {
-  if (event.type !== 'Match' || event.postMatchCountRecorded) return;
-  const info = parseSeasonWeek(event.eventId);
-  if (!info) return;
-  const key = weekKey(info.season, info.week);
-  const current = (db.get(key) as number) || 0;
-  if (current >= 2) return;
-
-  // Set fallback count to 2
-  db.set(key, 2);
-  event.postMatchCountRecorded = true;
-  event.signupsDisabled = true;
-
-  // Also disable all other matches in the same week
-  const scheduledEvents = (db.get('scheduledEvents') as PremierEvent[]) || [];
-  for (const ev of scheduledEvents) {
-    if (
-      ev.eventId !== event.eventId &&
-      ev.type === 'Match' &&
-      ev.week === event.week &&
-      !ev.signupsDisabled
-    ) {
-      ev.signupsDisabled = true;
-    }
-  }
-
-  // Persist all changes
-  db.set('scheduledEvents', scheduledEvents);
 }
 
 function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {
@@ -632,29 +602,6 @@ function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {
           (event.endTimestamp - now) * 1000,
         ),
       );
-      const fallbackTs = event.endTimestamp + 3600;
-      if (fallbackTs > now) {
-        timeouts.push(
-          setTimeout(
-            () => {
-              applyFallbackMatchCount(event);
-            },
-            (fallbackTs - now) * 1000,
-          ),
-        );
-      }
-    } else {
-      const fallbackTs = event.endTimestamp + 3600;
-      if (fallbackTs > now) {
-        timeouts.push(
-          setTimeout(
-            () => {
-              applyFallbackMatchCount(event);
-            },
-            (fallbackTs - now) * 1000,
-          ),
-        );
-      }
     }
   }
   if (timeouts.length > 0) scheduledTimeouts.set(event.eventId, timeouts);

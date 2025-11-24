@@ -20,14 +20,14 @@ export class ReactionHandler {
       const event = scheduledEvents.find((e) => e.postMatchPromptMessageId === message.id);
       if (!event) return; // not a prompt message
       const guild = message.guild as Guild;
-      const ownerRoleId = (this.db.get('ownerRoleId') as string)?.replace(/[<>@&]/g, '');
-      const captainRoleId = (this.db.get('captainRoleId') as string)?.replace(/[<>@&]/g, '');
+      const teamRoleId = (this.db.get('teamRoleId') as string)?.replace(/[<>@&]/g, '');
       const member = await guild.members.fetch(user.id).catch(() => null);
       if (!member) return;
-      const isPrivileged =
-        (ownerRoleId && member.roles.cache.has(ownerRoleId)) ||
-        (captainRoleId && member.roles.cache.has(captainRoleId));
-      if (!isPrivileged) return; // only owner/captain
+      
+      // Check if user has team role
+      if (!teamRoleId || !member.roles.cache.has(teamRoleId)) {
+        return; // only teammates can record
+      }
 
       const emoji = reaction.emoji.name;
       if (!['0️⃣', '1️⃣', '2️⃣'].includes(emoji || '')) return;
@@ -39,6 +39,14 @@ export class ReactionHandler {
       else if (emoji === '2️⃣') value = 2;
       this.db.set(key, value);
       event.postMatchCountRecorded = true;
+      
+      // Send confirmation message in thread
+      try {
+        await message.channel.send(`✅ Recorded ${value} match${value === 1 ? '' : 'es'} played this week.`);
+      } catch (e) {
+        console.error('Failed to send confirmation:', e);
+      }
+      
       // Disable further signups if 2 matches reached
       if (value === 2) {
         event.signupsDisabled = true;
