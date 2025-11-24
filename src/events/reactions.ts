@@ -37,7 +37,7 @@ export class ReactionHandler {
       let matchesPlayedToday = 0;
       if (emoji === '1️⃣') matchesPlayedToday = 1;
       else if (emoji === '2️⃣') matchesPlayedToday = 2;
-      
+
       // Get current week total and increment by today's count
       const currentWeekTotal = (this.db.get(key) as number) || 0;
       const newWeekTotal = currentWeekTotal + matchesPlayedToday;

@@ -551,13 +551,13 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
       `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
     );
   }
-  
+
   // Determine which reactions to show based on remaining capacity
   const remaining = 2 - currentCount;
   const maxOptions = Math.min(2, remaining);
   let promptText = 'React with ';
   const reactions: string[] = ['0️⃣'];
-  
+
   if (maxOptions >= 1) {
     promptText += '0️⃣ or 1️⃣';
     reactions.push('1️⃣');
@@ -570,7 +570,7 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
     promptText = 'React with 0️⃣ or 1️⃣';
   }
   promptText += ' to indicate matches played today.';
-  
+
   const msg = await thread.send(promptText);
   event.postMatchPromptMessageId = msg.id;
   persistEvent(event);
