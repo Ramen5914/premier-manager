@@ -10,7 +10,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "target": "ES2023",
+    "target": "esnext",
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
@@ -27,5 +27,9 @@
     "composite": true,
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
-  "exclude": ["node_modules", "dist", "eslint.config.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "eslint.config.ts"
+  ]
 }
