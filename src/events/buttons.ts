@@ -25,6 +25,73 @@ export class EventButtons {
     await this.handleButtonClick(interaction, 'tentative');
   }
 
+  @ButtonComponent({ id: /^edit-.*/ })
+  async handleEdit(interaction: ButtonInteraction): Promise<void> {
+    const member = interaction.member as GuildMember;
+    const ownerRoleId = (this.db.get('ownerRoleId') as string)?.replace(/[<>@&]/g, '');
+    const captainRoleId = (this.db.get('captainRoleId') as string)?.replace(/[<>@&]/g, '');
+
+    // Check if user is owner or captain
+    const isAuthorized =
+      (ownerRoleId && member.roles.cache.has(ownerRoleId)) ||
+      (captainRoleId && member.roles.cache.has(captainRoleId));
+
+    if (!isAuthorized) {
+      await interaction.reply({
+        content: 'Only team owners and captains can edit events.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Extract event ID
+    const eventId = interaction.customId.split('-').slice(1).join('-');
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === eventId);
+
+    if (!event) {
+      await interaction.reply({
+        content: 'Event not found.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Acknowledge the interaction
+    await interaction.reply({
+      content: 'Check your DMs for edit options!',
+      ephemeral: true,
+    });
+
+    // DM the user with options
+    try {
+      const eventDate = new Date(event.startTimestamp * 1000);
+      const formattedDate = formatEventDate(eventDate);
+      const season = this.db.get('season') as string;
+
+      await interaction.user.send(
+        `**Edit Event Options**\n` +
+          `Event: ${season} W${event.week} ${event.type} - ${event.map} (${formattedDate})\n\n` +
+          `What would you like to do?\n` +
+          `• Cancel this event\n` +
+          `• Change the map\n` +
+          `• Reschedule the event\n` +
+          `• Mark as completed\n\n` +
+          `Reply with your choice or type \`cancel\` to abort.`,
+      );
+    } catch (error) {
+      console.error('Failed to send DM:', error);
+      // Try to edit the reply if DM fails
+      try {
+        await interaction.editReply({
+          content: 'Could not send you a DM. Please check your privacy settings.',
+        });
+      } catch {
+        // Ignore if we can't edit
+      }
+    }
+  }
+
   private async handleButtonClick(
     interaction: ButtonInteraction,
     responseType: 'accepted' | 'declined' | 'tentative',

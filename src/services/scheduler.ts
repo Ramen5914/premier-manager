@@ -239,6 +239,11 @@ function createEventButtons(event: PremierEvent): ActionRowBuilder<ButtonBuilder
       .setLabel('❓ Tentative')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(`edit-${event.eventId}`)
+      .setLabel('✏️ Edit')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled),
   );
 }
 
