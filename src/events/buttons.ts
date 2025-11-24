@@ -69,15 +69,34 @@ export class EventButtons {
       const formattedDate = formatEventDate(eventDate);
       const season = this.db.get('season') as string;
 
+      // Get current responses
+      const responses = this.db.get(`${eventId}_responses`) as EventResponses | null;
+      const accepted = responses?.accepted || [];
+      const declined = responses?.declined || [];
+      const tentative = responses?.tentative || [];
+
+      let responseList = '';
+      if (accepted.length > 0) {
+        responseList += `**Accepted (${accepted.length}):**\n${accepted.map((id) => `<@${id}>`).join(', ')}\n\n`;
+      }
+      if (declined.length > 0) {
+        responseList += `**Declined (${declined.length}):**\n${declined.map((id) => `<@${id}>`).join(', ')}\n\n`;
+      }
+      if (tentative.length > 0) {
+        responseList += `**Tentative (${tentative.length}):**\n${tentative.map((id) => `<@${id}>`).join(', ')}\n\n`;
+      }
+
       await interaction.user.send(
         `**Edit Event Options**\n` +
           `Event: ${season} W${event.week} ${event.type} - ${event.map} (${formattedDate})\n\n` +
+          `${responseList}` +
           `What would you like to do?\n` +
-          `• Cancel this event\n` +
-          `• Change the map\n` +
-          `• Reschedule the event\n` +
-          `• Mark as completed\n\n` +
-          `Reply with your choice or type \`cancel\` to abort.`,
+          `• \`manage responses\` - Add/remove/move people between lists\n` +
+          `• \`cancel event\` - Cancel this event\n` +
+          `• \`change map\` - Change the map\n` +
+          `• \`reschedule\` - Reschedule the event\n` +
+          `• \`mark completed\` - Mark as completed\n\n` +
+          `Reply with your choice or type \`abort\` to cancel.`,
       );
     } catch (error) {
       console.error('Failed to send DM:', error);
