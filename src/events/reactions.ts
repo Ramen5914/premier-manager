@@ -23,7 +23,7 @@ export class ReactionHandler {
       const teamRoleId = (this.db.get('teamRoleId') as string)?.replace(/[<>@&]/g, '');
       const member = await guild.members.fetch(user.id).catch(() => null);
       if (!member) return;
-      
+
       // Check if user has team role
       if (!teamRoleId || !member.roles.cache.has(teamRoleId)) {
         return; // only teammates can record
@@ -34,21 +34,29 @@ export class ReactionHandler {
       const info = parseSeasonWeek(event.eventId);
       if (!info) return;
       const key = weekKey(info.season, info.week);
-      let value = 0;
-      if (emoji === '1️⃣') value = 1;
-      else if (emoji === '2️⃣') value = 2;
-      this.db.set(key, value);
-      event.postMatchCountRecorded = true;
+      let matchesPlayedToday = 0;
+      if (emoji === '1️⃣') matchesPlayedToday = 1;
+      else if (emoji === '2️⃣') matchesPlayedToday = 2;
       
+      // Get current week total and increment by today's count
+      const currentWeekTotal = (this.db.get(key) as number) || 0;
+      const newWeekTotal = currentWeekTotal + matchesPlayedToday;
+      this.db.set(key, newWeekTotal);
+      event.postMatchCountRecorded = true;
+
       // Send confirmation message in thread
       try {
-        await message.channel.send(`✅ Recorded ${value} match${value === 1 ? '' : 'es'} played this week.`);
+        if ('send' in message.channel) {
+          await message.channel.send(
+            `✅ Recorded ${matchesPlayedToday} match${matchesPlayedToday === 1 ? '' : 'es'} played today. Week total: ${newWeekTotal}/2`,
+          );
+        }
       } catch (e) {
         console.error('Failed to send confirmation:', e);
       }
-      
+
       // Disable further signups if 2 matches reached
-      if (value === 2) {
+      if (newWeekTotal >= 2) {
         event.signupsDisabled = true;
         // Also disable remaining same-week match events
         for (const ev of scheduledEvents) {
@@ -61,15 +69,15 @@ export class ReactionHandler {
             ev.signupsDisabled = true;
           }
         }
-      } else {
-        // Announce need for more signups
+      } else if (matchesPlayedToday > 0) {
+        // Announce need for more signups only if matches were played today
         const announcementChannelMention = this.db.get('announcementChannel') as string;
         const channelId = announcementChannelMention?.replace(/[<>#]/g, '');
         if (channelId) {
           try {
             const channel = await guild.channels.fetch(channelId);
             if (channel?.isTextBased()) {
-              const remaining = 2 - value;
+              const remaining = 2 - newWeekTotal;
               await channel.send(
                 `Need signups for ${remaining} more match${remaining === 1 ? '' : 'es'} this week (W${event.week}).`,
               );

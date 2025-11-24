@@ -551,13 +551,33 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
       `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
     );
   }
-  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played this week.');
+  
+  // Determine which reactions to show based on remaining capacity
+  const remaining = 2 - currentCount;
+  const maxOptions = Math.min(2, remaining);
+  let promptText = 'React with ';
+  const reactions: string[] = ['0️⃣'];
+  
+  if (maxOptions >= 1) {
+    promptText += '0️⃣ or 1️⃣';
+    reactions.push('1️⃣');
+  }
+  if (maxOptions >= 2) {
+    promptText = 'React with 0️⃣, 1️⃣, or 2️⃣';
+    reactions.push('2️⃣');
+  } else if (maxOptions === 1) {
+    // Only show 0 or 1 if only 1 spot remains
+    promptText = 'React with 0️⃣ or 1️⃣';
+  }
+  promptText += ' to indicate matches played today.';
+  
+  const msg = await thread.send(promptText);
   event.postMatchPromptMessageId = msg.id;
   persistEvent(event);
   try {
-    await msg.react('0️⃣');
-    await msg.react('1️⃣');
-    await msg.react('2️⃣');
+    for (const reaction of reactions) {
+      await msg.react(reaction);
+    }
   } catch (e) {
     console.error('Failed adding reactions:', e);
   }
