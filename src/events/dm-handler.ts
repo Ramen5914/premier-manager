@@ -7,7 +7,11 @@ import { bot } from '../bot.js';
 @Discord()
 export class DMHandler {
   private db = new Enmap({ name: 'premier_data' });
-  private pendingEdits = new Map<string, { eventId: string; stage: string }>();
+  private static pendingEdits = new Map<string, { eventId: string; stage: string }>();
+
+  setPendingEdit(userId: string, eventId: string, stage: string): void {
+    DMHandler.pendingEdits.set(userId, { eventId, stage });
+  }
 
   @On()
   async messageCreate([message]: ArgsOf<'messageCreate'>): Promise<void> {
@@ -15,33 +19,55 @@ export class DMHandler {
     if (message.channel.type !== ChannelType.DM || message.author.bot) return;
 
     const userId = message.author.id;
-    const content = message.content.toLowerCase().trim();
+    const content = message.content.trim();
 
     // Check if user has a pending edit
-    const pendingEdit = this.pendingEdits.get(userId);
+    const pendingEdit = DMHandler.pendingEdits.get(userId);
 
-    if (!pendingEdit) {
-      // Check if this is a new command from the edit menu
-      if (content === 'manage responses') {
-        await this.handleManageResponses(message);
-      }
-      return;
-    }
+    if (!pendingEdit) return;
 
     // Handle based on current stage
-    if (pendingEdit.stage === 'manage_responses') {
-      await this.handleManageResponsesInput(message);
+    if (pendingEdit.stage === 'main_menu') {
+      await this.handleMainMenu(message, pendingEdit.eventId, content);
+    } else if (pendingEdit.stage === 'manage_responses') {
+      await this.handleManageResponsesInput(message, pendingEdit.eventId);
     }
   }
 
-  private async handleManageResponses(message: Message): Promise<void> {
+  private async handleMainMenu(message: Message, eventId: string, content: string): Promise<void> {
     const userId = message.author.id;
 
-    // Find the most recent event edit for this user
-    // This is a simplified approach - in production you'd want to track this more explicitly
+    if (content === '0') {
+      DMHandler.pendingEdits.delete(userId);
+      await message.reply('❌ Cancelled.');
+      return;
+    }
+
+    if (content === '1') {
+      await this.handleManageResponses(message, eventId);
+    } else if (content === '2') {
+      await message.reply('Cancel event feature coming soon!');
+      DMHandler.pendingEdits.delete(userId);
+    } else if (content === '3') {
+      await message.reply('Change map feature coming soon!');
+      DMHandler.pendingEdits.delete(userId);
+    } else if (content === '4') {
+      await message.reply('Reschedule feature coming soon!');
+      DMHandler.pendingEdits.delete(userId);
+    } else if (content === '5') {
+      await message.reply('Mark completed feature coming soon!');
+      DMHandler.pendingEdits.delete(userId);
+    } else {
+      await message.reply('Invalid option. Please reply with 0-5.');
+    }
+  }
+
+  private async handleManageResponses(message: Message, eventId: string): Promise<void> {
+    const userId = message.author.id;
+
     await message.reply(
       `**Manage Event Responses**\n\n` +
-        `To move or remove someone, use these commands:\n` +
+        `Commands:\n` +
         `• \`move @user to accepted\` - Move user to Accepted\n` +
         `• \`move @user to declined\` - Move user to Declined\n` +
         `• \`move @user to tentative\` - Move user to Tentative\n` +
@@ -52,15 +78,15 @@ export class DMHandler {
         `Type \`done\` when finished.`,
     );
 
-    this.pendingEdits.set(userId, { eventId: '', stage: 'manage_responses' });
+    DMHandler.pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
   }
 
-  private async handleManageResponsesInput(message: Message): Promise<void> {
+  private async handleManageResponsesInput(message: Message, eventId: string): Promise<void> {
     const userId = message.author.id;
     const content = message.content.toLowerCase().trim();
 
     if (content === 'done') {
-      this.pendingEdits.delete(userId);
+      DMHandler.pendingEdits.delete(userId);
       await message.reply('✅ Done managing responses.');
       return;
     }
@@ -75,19 +101,9 @@ export class DMHandler {
       return;
     }
 
-    // Find all events to determine which one is being edited
+    // Find the specific event being edited
     const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
-
-    // For now, let's work with the most recent event that has responses
-    // TODO: Better tracking of which event is being edited
-    let targetEvent: PremierEvent | null = null;
-    for (const event of scheduledEvents) {
-      const responses = this.db.get(`${event.eventId}_responses`) as EventResponses | null;
-      if (responses) {
-        targetEvent = event;
-        break;
-      }
-    }
+    const targetEvent = scheduledEvents.find((e) => e.eventId === eventId);
 
     if (!targetEvent) {
       await message.reply('Could not find event to edit.');

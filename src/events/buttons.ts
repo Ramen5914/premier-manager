@@ -90,14 +90,19 @@ export class EventButtons {
         `**Edit Event Options**\n` +
           `Event: ${season} W${event.week} ${event.type} - ${event.map} (${formattedDate})\n\n` +
           `${responseList}` +
-          `What would you like to do?\n` +
-          `• \`manage responses\` - Add/remove/move people between lists\n` +
-          `• \`cancel event\` - Cancel this event\n` +
-          `• \`change map\` - Change the map\n` +
-          `• \`reschedule\` - Reschedule the event\n` +
-          `• \`mark completed\` - Mark as completed\n\n` +
-          `Reply with your choice or type \`abort\` to cancel.`,
+          `Reply with a number:\n` +
+          `**1** - Manage responses (add/remove/move people)\n` +
+          `**2** - Cancel this event\n` +
+          `**3** - Change the map\n` +
+          `**4** - Reschedule the event\n` +
+          `**5** - Mark as completed\n\n` +
+          `Type **0** to cancel.`,
       );
+
+      // Store pending edit with event ID
+      const DMHandler = (await import('./dm-handler.js')).DMHandler;
+      const handler = new DMHandler();
+      handler.setPendingEdit(interaction.user.id, eventId, 'main_menu');
     } catch (error) {
       console.error('Failed to send DM:', error);
       // Try to edit the reply if DM fails
