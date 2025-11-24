@@ -24,21 +24,22 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
 
     // Get current week's events that haven't passed
     const currentEvents = scheduledEvents.filter((event) => {
-      const eventDate = new Date(event.startTimestamp * 1000);
-      const currentDate = new Date();
+      // Use PST timezone for consistent week calculation
+      const nowPST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+      const eventPST = new Date(new Date(event.startTimestamp * 1000).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
 
-      // Get Monday of current week
-      const currentMonday = new Date(currentDate);
-      currentMonday.setDate(currentDate.getDate() - ((currentDate.getDay() + 6) % 7));
+      // Get Monday of current week in PST
+      const currentMonday = new Date(nowPST);
+      currentMonday.setDate(nowPST.getDate() - ((nowPST.getDay() + 6) % 7));
       currentMonday.setHours(0, 0, 0, 0);
 
-      // Get Sunday (end of current week)
-      const currentSunday = new Date(currentMonday);
-      currentSunday.setDate(currentMonday.getDate() + 6);
-      currentSunday.setHours(23, 59, 59, 999);
+      // Get Monday of event's week in PST
+      const eventMonday = new Date(eventPST);
+      eventMonday.setDate(eventPST.getDate() - ((eventPST.getDay() + 6) % 7));
+      eventMonday.setHours(0, 0, 0, 0);
 
-      // Event starts within current week (Mon-Sun) and hasn't ended
-      return eventDate >= currentMonday && eventDate <= currentSunday && event.endTimestamp > now;
+      // Same week (by Monday) and event hasn't ended
+      return eventMonday.getTime() === currentMonday.getTime() && event.endTimestamp > now;
     });
 
     if (currentEvents.length === 0) {
