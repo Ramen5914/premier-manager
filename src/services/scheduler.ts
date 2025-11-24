@@ -25,8 +25,14 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
     // Get current week's events that haven't passed
     const currentEvents = scheduledEvents.filter((event) => {
       // Use PST timezone for consistent week calculation
-      const nowPST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-      const eventPST = new Date(new Date(event.startTimestamp * 1000).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+      const nowPST = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+      );
+      const eventPST = new Date(
+        new Date(event.startTimestamp * 1000).toLocaleString('en-US', {
+          timeZone: 'America/Los_Angeles',
+        }),
+      );
 
       // Get Monday of current week in PST
       const currentMonday = new Date(nowPST);
@@ -55,7 +61,7 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
         const key = weekKey(info.season, info.week);
         const matchCount = (db.get(key) as number) || 0;
         const shouldDisable = matchCount >= 2;
-        
+
         for (const event of currentEvents) {
           if (event.type === 'Match') {
             event.signupsDisabled = shouldDisable;
@@ -564,12 +570,12 @@ function applyFallbackMatchCount(event: PremierEvent): void {
   const key = weekKey(info.season, info.week);
   const current = (db.get(key) as number) || 0;
   if (current >= 2) return;
-  
+
   // Set fallback count to 2
   db.set(key, 2);
   event.postMatchCountRecorded = true;
   event.signupsDisabled = true;
-  
+
   // Also disable all other matches in the same week
   const scheduledEvents = (db.get('scheduledEvents') as PremierEvent[]) || [];
   for (const ev of scheduledEvents) {
@@ -582,7 +588,7 @@ function applyFallbackMatchCount(event: PremierEvent): void {
       ev.signupsDisabled = true;
     }
   }
-  
+
   // Persist all changes
   db.set('scheduledEvents', scheduledEvents);
 }
