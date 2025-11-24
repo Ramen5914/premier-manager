@@ -551,7 +551,7 @@ async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<vo
       `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
     );
   }
-  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played this week.');
+  const msg = await thread.send('React with 0️⃣ 1️⃣ 2️⃣ to indicate matches played today.');
   event.postMatchPromptMessageId = msg.id;
   persistEvent(event);
   try {
