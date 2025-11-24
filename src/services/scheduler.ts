@@ -46,6 +46,24 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
       return;
     }
 
+    // Reset signupsDisabled for the current week's matches (new week = fresh start)
+    // Check if this week's match count allows signups
+    const currentWeek = currentEvents[0]?.week;
+    if (currentWeek) {
+      const info = parseSeasonWeek(currentEvents[0].eventId);
+      if (info) {
+        const key = weekKey(info.season, info.week);
+        const matchCount = (db.get(key) as number) || 0;
+        const shouldDisable = matchCount >= 2;
+        
+        for (const event of currentEvents) {
+          if (event.type === 'Match') {
+            event.signupsDisabled = shouldDisable;
+          }
+        }
+      }
+    }
+
     // Sort events chronologically
     currentEvents.sort((a, b) => a.startTimestamp - b.startTimestamp);
 
@@ -546,10 +564,27 @@ function applyFallbackMatchCount(event: PremierEvent): void {
   const key = weekKey(info.season, info.week);
   const current = (db.get(key) as number) || 0;
   if (current >= 2) return;
+  
+  // Set fallback count to 2
   db.set(key, 2);
   event.postMatchCountRecorded = true;
   event.signupsDisabled = true;
-  persistEvent(event);
+  
+  // Also disable all other matches in the same week
+  const scheduledEvents = (db.get('scheduledEvents') as PremierEvent[]) || [];
+  for (const ev of scheduledEvents) {
+    if (
+      ev.eventId !== event.eventId &&
+      ev.type === 'Match' &&
+      ev.week === event.week &&
+      !ev.signupsDisabled
+    ) {
+      ev.signupsDisabled = true;
+    }
+  }
+  
+  // Persist all changes
+  db.set('scheduledEvents', scheduledEvents);
 }
 
 function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {
