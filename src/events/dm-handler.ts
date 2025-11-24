@@ -4,13 +4,15 @@ import Enmap from 'enmap';
 import type { EventResponses, PremierEvent } from '../types/event.js';
 import { bot } from '../bot.js';
 
+// Shared state across all instances
+const pendingEdits = new Map<string, { eventId: string; stage: string }>();
+
 @Discord()
 export class DMHandler {
   private db = new Enmap({ name: 'premier_data' });
-  private static pendingEdits = new Map<string, { eventId: string; stage: string }>();
 
   setPendingEdit(userId: string, eventId: string, stage: string): void {
-    DMHandler.pendingEdits.set(userId, { eventId, stage });
+    pendingEdits.set(userId, { eventId, stage });
   }
 
   @On()
@@ -22,7 +24,7 @@ export class DMHandler {
     const content = message.content.trim();
 
     // Check if user has a pending edit
-    const pendingEdit = DMHandler.pendingEdits.get(userId);
+    const pendingEdit = pendingEdits.get(userId);
 
     if (!pendingEdit) return;
 
@@ -38,7 +40,7 @@ export class DMHandler {
     const userId = message.author.id;
 
     if (content === '0') {
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
       await message.reply('❌ Cancelled.');
       return;
     }
@@ -47,16 +49,16 @@ export class DMHandler {
       await this.handleManageResponses(message, eventId);
     } else if (content === '2') {
       await message.reply('Cancel event feature coming soon!');
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
     } else if (content === '3') {
       await message.reply('Change map feature coming soon!');
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
     } else if (content === '4') {
       await message.reply('Reschedule feature coming soon!');
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
     } else if (content === '5') {
       await message.reply('Mark completed feature coming soon!');
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
     } else {
       await message.reply('Invalid option. Please reply with 0-5.');
     }
@@ -78,7 +80,7 @@ export class DMHandler {
         `Type \`done\` when finished.`,
     );
 
-    DMHandler.pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+    pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
   }
 
   private async handleManageResponsesInput(message: Message, eventId: string): Promise<void> {
@@ -86,7 +88,7 @@ export class DMHandler {
     const content = message.content.toLowerCase().trim();
 
     if (content === 'done') {
-      DMHandler.pendingEdits.delete(userId);
+      pendingEdits.delete(userId);
       await message.reply('✅ Done managing responses.');
       return;
     }
