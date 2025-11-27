@@ -1,5 +1,10 @@
-import { MessageFlags, type CommandInteraction, EmbedBuilder } from 'discord.js';
-import { Discord, Guard, Slash } from 'discordx';
+import {
+  ApplicationCommandOptionType,
+  MessageFlags,
+  type CommandInteraction,
+  EmbedBuilder,
+} from 'discord.js';
+import { Discord, Guard, Slash, SlashOption } from 'discordx';
 import Enmap from 'enmap';
 import { IsManager } from '../guards/manager.js';
 import { IsAdmin } from '../guards/admin.js';
@@ -78,6 +83,49 @@ export class Slashes {
     await interaction.reply({
       embeds: [embed],
       components: [],
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
+
+  @Slash({ description: 'Set the team score manually' })
+  @Guard(OrGuard(IsManager, IsAdmin))
+  async setscore(
+    @SlashOption({
+      description: 'New score value',
+      name: 'score',
+      required: true,
+      type: ApplicationCommandOptionType.Integer,
+      minValue: 0,
+    })
+    score: number,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    const oldScore = (this.db.get('score') as number) || 0;
+    this.db.set('score', score);
+
+    const qualificationThreshold = 600;
+    const oldStatus = oldScore >= qualificationThreshold ? '✅ Qualified' : '❌ Not Qualified';
+    const newStatus = score >= qualificationThreshold ? '✅ Qualified' : '❌ Not Qualified';
+
+    const embed = new EmbedBuilder()
+      .setTitle('Score Updated')
+      .setColor(0x98c379)
+      .addFields(
+        {
+          name: 'Previous Score',
+          value: `${oldScore} points\n${oldStatus}`,
+          inline: true,
+        },
+        {
+          name: 'New Score',
+          value: `${score} points\n${newStatus}`,
+          inline: true,
+        },
+      )
+      .setTimestamp();
+
+    await interaction.reply({
+      embeds: [embed],
       flags: [MessageFlags.Ephemeral],
     });
   }
