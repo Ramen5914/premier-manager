@@ -1,6 +1,6 @@
 export interface PremierEvent {
   week: number;
-  type: 'Practice' | 'Match';
+  type: 'Practice' | 'Match' | 'Playoff';
   startTimestamp: number;
   endTimestamp: number;
   day: string;
@@ -17,6 +17,9 @@ export interface PremierEvent {
   postMatchCountRecorded: boolean; // true once a reaction or fallback sets match count
   // Signup control for remaining week matches
   signupsDisabled: boolean; // when true, disable Accept/Decline for this match
+  // Match result tracking
+  match1Result?: 'win' | 'loss' | 'unplayed';
+  match2Result?: 'win' | 'loss' | 'unplayed';
 }
 
 export interface EventResponses {
