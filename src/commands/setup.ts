@@ -109,11 +109,12 @@ export class Setup {
 
     this.db.set('season', season);
     this.db.set('startDate', startDate);
+    this.db.set('score', 0);
 
     await interaction.reply({
       components: [
         new TextDisplayBuilder().setContent(
-          `Season set to ${season} with start date ${startDate.toLocaleDateString()}.`,
+          `Season set to ${season} with start date ${startDate.toLocaleDateString()}. Score reset to 0.`,
         ),
       ],
       flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
@@ -379,47 +380,50 @@ export class Setup {
     // Store event creator
     this.db.set('eventCreatorId', interaction.user.id);
 
-    // Generate 35 events (5 per week for 7 weeks)
+    // Generate 35 events (5 per week for 7 weeks, except Week 7 has special schedule)
     const events: PremierEvent[] = [];
     const timezone = 'America/Los_Angeles';
 
     for (let week = 0; week < 7; week++) {
       const weekNumber = week + 1;
       const map = mapsArray[week];
+      const isWeek7 = weekNumber === 7;
 
       // Calculate the base date for this week (Wednesday of the week)
       const baseDate = new Date(startDate);
       baseDate.setDate(startDate.getDate() + week * 7);
 
-      // Wednesday Practice: 7pm-8pm
-      const wedPractice = new Date(
-        baseDate.toLocaleString('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }) + ' 19:00:00',
-      );
-      const wedPracticeEnd = new Date(wedPractice);
-      wedPracticeEnd.setHours(wedPracticeEnd.getHours() + 1);
+      // Wednesday Practice: 7pm-8pm (skip on Week 7)
+      if (!isWeek7) {
+        const wedPractice = new Date(
+          baseDate.toLocaleString('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }) + ' 19:00:00',
+        );
+        const wedPracticeEnd = new Date(wedPractice);
+        wedPracticeEnd.setHours(wedPracticeEnd.getHours() + 1);
 
-      events.push({
-        week: weekNumber,
-        type: 'Practice',
-        startTimestamp: Math.floor(wedPractice.getTime() / 1000),
-        endTimestamp: Math.floor(wedPracticeEnd.getTime() / 1000),
-        day: 'Wednesday',
-        map,
-        eventId: `${season}-W${weekNumber}-Practice-Wed`,
-        rosterAnnouncementMessageId: null,
-        messageId: null,
-        threadId: null,
-        threadRosterMessageId: null,
-        preEventReminderSent: false,
-        postMatchPromptMessageId: null,
-        postMatchCountRecorded: false,
-        signupsDisabled: false,
-      });
+        events.push({
+          week: weekNumber,
+          type: 'Practice',
+          startTimestamp: Math.floor(wedPractice.getTime() / 1000),
+          endTimestamp: Math.floor(wedPracticeEnd.getTime() / 1000),
+          day: 'Wednesday',
+          map,
+          eventId: `${season}-W${weekNumber}-Practice-Wed`,
+          rosterAnnouncementMessageId: null,
+          messageId: null,
+          threadId: null,
+          threadRosterMessageId: null,
+          preEventReminderSent: false,
+          postMatchPromptMessageId: null,
+          postMatchCountRecorded: false,
+          signupsDisabled: false,
+        });
+      }
 
       // Thursday Match: 7pm-8pm
       const thuMatch = new Date(baseDate);
@@ -453,37 +457,39 @@ export class Setup {
         signupsDisabled: false,
       });
 
-      // Friday Practice: 8pm-9pm
-      const friPractice = new Date(baseDate);
-      friPractice.setDate(baseDate.getDate() + 2);
-      const friPracticeDate = new Date(
-        friPractice.toLocaleString('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }) + ' 20:00:00',
-      );
-      const friPracticeEnd = new Date(friPracticeDate);
-      friPracticeEnd.setHours(friPracticeEnd.getHours() + 1);
+      // Friday Practice: 8pm-9pm (skip on Week 7)
+      if (!isWeek7) {
+        const friPractice = new Date(baseDate);
+        friPractice.setDate(baseDate.getDate() + 2);
+        const friPracticeDate = new Date(
+          friPractice.toLocaleString('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }) + ' 20:00:00',
+        );
+        const friPracticeEnd = new Date(friPracticeDate);
+        friPracticeEnd.setHours(friPracticeEnd.getHours() + 1);
 
-      events.push({
-        week: weekNumber,
-        type: 'Practice',
-        startTimestamp: Math.floor(friPracticeDate.getTime() / 1000),
-        endTimestamp: Math.floor(friPracticeEnd.getTime() / 1000),
-        day: 'Friday',
-        map,
-        eventId: `${season}-W${weekNumber}-Practice-Fri`,
-        rosterAnnouncementMessageId: null,
-        messageId: null,
-        threadId: null,
-        threadRosterMessageId: null,
-        preEventReminderSent: false,
-        postMatchPromptMessageId: null,
-        postMatchCountRecorded: false,
-        signupsDisabled: false,
-      });
+        events.push({
+          week: weekNumber,
+          type: 'Practice',
+          startTimestamp: Math.floor(friPracticeDate.getTime() / 1000),
+          endTimestamp: Math.floor(friPracticeEnd.getTime() / 1000),
+          day: 'Friday',
+          map,
+          eventId: `${season}-W${weekNumber}-Practice-Fri`,
+          rosterAnnouncementMessageId: null,
+          messageId: null,
+          threadId: null,
+          threadRosterMessageId: null,
+          preEventReminderSent: false,
+          postMatchPromptMessageId: null,
+          postMatchCountRecorded: false,
+          signupsDisabled: false,
+        });
+      }
 
       // Saturday Match: 8pm-9pm
       const satMatch = new Date(baseDate);
@@ -517,7 +523,7 @@ export class Setup {
         signupsDisabled: false,
       });
 
-      // Sunday Match: 7pm-8pm
+      // Sunday: Match for Weeks 1-6 (7pm-8pm), Playoff for Week 7 (7pm-7:15pm)
       const sunMatch = new Date(baseDate);
       sunMatch.setDate(baseDate.getDate() + 4);
       const sunMatchDate = new Date(
@@ -529,16 +535,20 @@ export class Setup {
         }) + ' 19:00:00',
       );
       const sunMatchEnd = new Date(sunMatchDate);
-      sunMatchEnd.setHours(sunMatchEnd.getHours() + 1);
+      if (isWeek7) {
+        sunMatchEnd.setMinutes(sunMatchEnd.getMinutes() + 15); // 7:15pm for Playoff
+      } else {
+        sunMatchEnd.setHours(sunMatchEnd.getHours() + 1); // 8pm for regular Match
+      }
 
       events.push({
         week: weekNumber,
-        type: 'Match',
+        type: isWeek7 ? 'Playoff' : 'Match',
         startTimestamp: Math.floor(sunMatchDate.getTime() / 1000),
         endTimestamp: Math.floor(sunMatchEnd.getTime() / 1000),
         day: 'Sunday',
         map,
-        eventId: `${season}-W${weekNumber}-Match-Sun`,
+        eventId: `${season}-W${weekNumber}-${isWeek7 ? 'Playoff' : 'Match'}-Sun`,
         rosterAnnouncementMessageId: null,
         messageId: null,
         threadId: null,
