@@ -105,10 +105,10 @@ export class EventButtons {
           `Type **0** to cancel.`,
       );
 
-      // Store pending edit with event ID
+      // Store pending edit with event ID and guild ID
       const DMHandler = (await import('./dm-handler.js')).DMHandler;
       const handler = new DMHandler();
-      handler.setPendingEdit(interaction.user.id, eventId, 'main_menu');
+      handler.setPendingEdit(interaction.user.id, eventId, 'main_menu', interaction.guildId!);
     } catch (error) {
       console.error('Failed to send DM:', error);
       // Try to edit the reply if DM fails

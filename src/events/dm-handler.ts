@@ -1,21 +1,39 @@
-import { ChannelType, Message } from 'discord.js';
-import { Discord, On, type ArgsOf } from 'discordx';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  Message,
+  StringSelectMenuBuilder,
+  type ButtonInteraction,
+  type StringSelectMenuInteraction,
+} from 'discord.js';
+import { ButtonComponent, Discord, On, SelectMenuComponent, type ArgsOf } from 'discordx';
 import Enmap from 'enmap';
 import type { EventResponses, PremierEvent } from '../types/event.js';
 import { bot } from '../bot.js';
 
 // Shared state across all instances
-const pendingEdits = new Map<string, { eventId: string; stage: string }>();
+const pendingEdits = new Map<
+  string,
+  {
+    eventId: string;
+    stage: string;
+    guildId: string;
+    action?: 'add' | 'move' | 'remove';
+    selectedUserId?: string;
+  }
+>();
 
 @Discord()
 export class DMHandler {
   private db = new Enmap({ name: 'premier_data' });
 
-  setPendingEdit(userId: string, eventId: string, stage: string): void {
+  setPendingEdit(userId: string, eventId: string, stage: string, guildId: string): void {
     console.log(
-      `[DMHandler] setPendingEdit called: userId=${userId}, eventId=${eventId}, stage=${stage}`,
+      `[DMHandler] setPendingEdit called: userId=${userId}, eventId=${eventId}, stage=${stage}, guildId=${guildId}`,
     );
-    pendingEdits.set(userId, { eventId, stage });
+    pendingEdits.set(userId, { eventId, stage, guildId });
     console.log(`[DMHandler] pendingEdits size: ${pendingEdits.size}`);
   }
 
@@ -99,8 +117,14 @@ export class DMHandler {
         `[DMHandler.handleMainMenu] Setting stage to manage_responses BEFORE calling handleManageResponses`,
       );
 
-      // Set stage BEFORE attempting to send
-      pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+      // Set stage BEFORE attempting to send (reuse existing guildId)
+      const currentEdit = pendingEdits.get(userId);
+      if (!currentEdit) {
+        await message.reply('Session expired. Please restart from the edit button.');
+        return;
+      }
+      currentEdit.stage = 'manage_responses';
+      pendingEdits.set(userId, currentEdit);
       console.log(
         `[DMHandler.handleMainMenu] Stage set. Current pendingEdit:`,
         pendingEdits.get(userId),
@@ -181,21 +205,45 @@ export class DMHandler {
       `[DMHandler.handleManageResponses] Called with userId=${userId}, eventId=${eventId}`,
     );
 
+    const addButton = new ButtonBuilder()
+      .setCustomId(`dm-add-${userId}`)
+      .setLabel('Add User')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('➕');
+
+    const moveButton = new ButtonBuilder()
+      .setCustomId(`dm-move-${userId}`)
+      .setLabel('Move User')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('🔄');
+
+    const removeButton = new ButtonBuilder()
+      .setCustomId(`dm-remove-${userId}`)
+      .setLabel('Remove User')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('➖');
+
+    const doneButton = new ButtonBuilder()
+      .setCustomId(`dm-done-${userId}`)
+      .setLabel('Done')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('✅');
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      addButton,
+      moveButton,
+      removeButton,
+      doneButton,
+    );
+
     const helpText =
       `**Manage Event Responses**\n\n` +
-      `Commands:\n` +
-      `• \`move @user to accepted\` - Move user to Accepted\n` +
-      `• \`move @user to declined\` - Move user to Declined\n` +
-      `• \`move @user to tentative\` - Move user to Tentative\n` +
-      `• \`remove @user\` - Remove user from all lists\n` +
-      `• \`add @user to accepted\` - Add user to Accepted\n` +
-      `• \`add @user to declined\` - Add user to Declined\n` +
-      `• \`add @user to tentative\` - Add user to Tentative\n\n` +
-      `Type \`done\` when finished.`;
+      `Click a button below to add, move, or remove users from response lists.\n\n` +
+      `Click **Done** when finished.`;
 
-    console.log(`[DMHandler.handleManageResponses] About to call message.reply with help text`);
+    console.log(`[DMHandler.handleManageResponses] About to send message with buttons`);
     try {
-      const reply = await message.reply(helpText);
+      const reply = await message.reply({ content: helpText, components: [row] });
       console.log(
         `[DMHandler.handleManageResponses] Successfully sent reply. Message ID: ${reply.id}`,
       );
@@ -203,7 +251,7 @@ export class DMHandler {
       console.error('[DMHandler.handleManageResponses] message.reply failed with error:', err);
       console.log(`[DMHandler.handleManageResponses] Attempting fallback: message.author.send`);
       try {
-        const dm = await message.author.send(helpText);
+        const dm = await message.author.send({ content: helpText, components: [row] });
         console.log(
           `[DMHandler.handleManageResponses] Fallback DM sent successfully. Message ID: ${dm.id}`,
         );
@@ -213,6 +261,327 @@ export class DMHandler {
           e,
         );
       }
+    }
+  }
+
+  @ButtonComponent({ id: /^dm-add-.*/ })
+  async handleAddButton(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit) {
+      await interaction.reply({ content: 'Session expired. Please start over.', ephemeral: true });
+      return;
+    }
+
+    pendingEdit.action = 'add';
+    pendingEdits.set(userId, pendingEdit);
+
+    await this.showUserSelectMenu(interaction, pendingEdit.eventId, 'add');
+  }
+
+  @ButtonComponent({ id: /^dm-move-.*/ })
+  async handleMoveButton(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit) {
+      await interaction.reply({ content: 'Session expired. Please start over.', ephemeral: true });
+      return;
+    }
+
+    pendingEdit.action = 'move';
+    pendingEdits.set(userId, pendingEdit);
+
+    await this.showUserSelectMenu(interaction, pendingEdit.eventId, 'move');
+  }
+
+  @ButtonComponent({ id: /^dm-remove-.*/ })
+  async handleRemoveButton(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit) {
+      await interaction.reply({ content: 'Session expired. Please start over.', ephemeral: true });
+      return;
+    }
+
+    pendingEdit.action = 'remove';
+    pendingEdits.set(userId, pendingEdit);
+
+    await this.showUserSelectMenu(interaction, pendingEdit.eventId, 'remove');
+  }
+
+  @ButtonComponent({ id: /^dm-done-.*/ })
+  async handleDoneButton(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    pendingEdits.delete(userId);
+
+    await interaction.update({
+      content: '✅ Done managing responses.',
+      components: [],
+    });
+  }
+
+  private async showUserSelectMenu(
+    interaction: ButtonInteraction,
+    eventId: string,
+    action: 'add' | 'move' | 'remove',
+  ): Promise<void> {
+    const responses = (this.db.get(`${eventId}_responses`) as EventResponses) || {
+      accepted: [],
+      declined: [],
+      tentative: [],
+    };
+
+    // Get all unique user IDs
+    const allUserIds = new Set([
+      ...responses.accepted,
+      ...responses.declined,
+      ...responses.tentative,
+    ]);
+
+    if (allUserIds.size === 0) {
+      await interaction.reply({
+        content: 'No users found in response lists.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Fetch user details from guild
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === eventId);
+
+    if (!event) {
+      await interaction.reply({ content: 'Event not found.', ephemeral: true });
+      return;
+    }
+
+    try {
+      const pendingEdit = pendingEdits.get(interaction.user.id);
+      if (!pendingEdit) {
+        await interaction.reply({
+          content: 'Session expired. Please start over.',
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const guild = await bot.guilds.fetch(pendingEdit.guildId);
+      const members = await guild.members.fetch({ user: Array.from(allUserIds) });
+
+      const options = Array.from(members.values()).map((member) => ({
+        label: member.displayName,
+        description: member.user.tag,
+        value: member.id,
+      }));
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`dm-select-user-${interaction.user.id}`)
+        .setPlaceholder(`Select a user to ${action}`)
+        .addOptions(options.slice(0, 25)); // Discord limit
+
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+      await interaction.reply({
+        content: `Select a user to ${action}:`,
+        components: [row],
+        ephemeral: true,
+      });
+    } catch (error) {
+      console.error('[DMHandler.showUserSelectMenu] Error:', error);
+      await interaction.reply({
+        content: 'Failed to load users. Please try again.',
+        ephemeral: true,
+      });
+    }
+  }
+
+  @SelectMenuComponent({ id: /^dm-select-user-.*/ })
+  async handleUserSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const selectedUserId = interaction.values[0];
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit || !pendingEdit.action) {
+      await interaction.reply({ content: 'Session expired. Please start over.', ephemeral: true });
+      return;
+    }
+
+    pendingEdit.selectedUserId = selectedUserId;
+    pendingEdits.set(userId, pendingEdit);
+
+    if (pendingEdit.action === 'remove') {
+      // Execute remove immediately
+      await this.executeRemove(interaction, pendingEdit.eventId, selectedUserId);
+    } else {
+      // Show target list selection
+      await this.showTargetListMenu(interaction, pendingEdit.action);
+    }
+  }
+
+  private async showTargetListMenu(
+    interaction: StringSelectMenuInteraction,
+    action: 'add' | 'move',
+  ): Promise<void> {
+    const acceptedButton = new ButtonBuilder()
+      .setCustomId(`dm-target-accepted-${interaction.user.id}`)
+      .setLabel('Accepted')
+      .setStyle(ButtonStyle.Success);
+
+    const declinedButton = new ButtonBuilder()
+      .setCustomId(`dm-target-declined-${interaction.user.id}`)
+      .setLabel('Declined')
+      .setStyle(ButtonStyle.Danger);
+
+    const tentativeButton = new ButtonBuilder()
+      .setCustomId(`dm-target-tentative-${interaction.user.id}`)
+      .setLabel('Tentative')
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      acceptedButton,
+      declinedButton,
+      tentativeButton,
+    );
+
+    await interaction.update({
+      content: `${action === 'add' ? 'Add' : 'Move'} user to which list?`,
+      components: [row],
+    });
+  }
+
+  @ButtonComponent({ id: /^dm-target-(accepted|declined|tentative)-.*/ })
+  async handleTargetListButton(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit || !pendingEdit.selectedUserId || !pendingEdit.action) {
+      await interaction.reply({ content: 'Session expired. Please start over.', ephemeral: true });
+      return;
+    }
+
+    const targetList = interaction.customId.split('-')[2] as 'accepted' | 'declined' | 'tentative';
+
+    if (pendingEdit.action === 'add') {
+      await this.executeAdd(
+        interaction,
+        pendingEdit.eventId,
+        pendingEdit.selectedUserId,
+        targetList,
+      );
+    } else if (pendingEdit.action === 'move') {
+      await this.executeMove(
+        interaction,
+        pendingEdit.eventId,
+        pendingEdit.selectedUserId,
+        targetList,
+      );
+    }
+
+    // Reset for next action
+    pendingEdit.action = undefined;
+    pendingEdit.selectedUserId = undefined;
+    pendingEdits.set(userId, pendingEdit);
+  }
+
+  private async executeAdd(
+    interaction: ButtonInteraction,
+    eventId: string,
+    targetUserId: string,
+    targetList: 'accepted' | 'declined' | 'tentative',
+  ): Promise<void> {
+    const responses = (this.db.get(`${eventId}_responses`) as EventResponses) || {
+      accepted: [],
+      declined: [],
+      tentative: [],
+    };
+
+    // Remove from all lists first (prevent duplicates)
+    responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
+    responses.declined = responses.declined.filter((id) => id !== targetUserId);
+    responses.tentative = responses.tentative.filter((id) => id !== targetUserId);
+
+    // Add to target list
+    responses[targetList].push(targetUserId);
+    this.db.set(`${eventId}_responses`, responses);
+
+    await interaction.update({
+      content: `✅ Added <@${targetUserId}> to ${targetList}.`,
+      components: [],
+    });
+
+    // Update the event message
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === eventId);
+    if (event) {
+      await this.updateEventMessage(event, responses);
+    }
+  }
+
+  private async executeMove(
+    interaction: ButtonInteraction,
+    eventId: string,
+    targetUserId: string,
+    targetList: 'accepted' | 'declined' | 'tentative',
+  ): Promise<void> {
+    const responses = (this.db.get(`${eventId}_responses`) as EventResponses) || {
+      accepted: [],
+      declined: [],
+      tentative: [],
+    };
+
+    // Remove from all lists
+    responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
+    responses.declined = responses.declined.filter((id) => id !== targetUserId);
+    responses.tentative = responses.tentative.filter((id) => id !== targetUserId);
+
+    // Add to target list
+    responses[targetList].push(targetUserId);
+    this.db.set(`${eventId}_responses`, responses);
+
+    await interaction.update({
+      content: `✅ Moved <@${targetUserId}> to ${targetList}.`,
+      components: [],
+    });
+
+    // Update the event message
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === eventId);
+    if (event) {
+      await this.updateEventMessage(event, responses);
+    }
+  }
+
+  private async executeRemove(
+    interaction: StringSelectMenuInteraction,
+    eventId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    const responses = (this.db.get(`${eventId}_responses`) as EventResponses) || {
+      accepted: [],
+      declined: [],
+      tentative: [],
+    };
+
+    // Remove from all lists
+    responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
+    responses.declined = responses.declined.filter((id) => id !== targetUserId);
+    responses.tentative = responses.tentative.filter((id) => id !== targetUserId);
+
+    this.db.set(`${eventId}_responses`, responses);
+
+    await interaction.update({
+      content: `✅ Removed <@${targetUserId}> from all lists.`,
+      components: [],
+    });
+
+    // Update the event message
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === eventId);
+    if (event) {
+      await this.updateEventMessage(event, responses);
     }
   }
 
