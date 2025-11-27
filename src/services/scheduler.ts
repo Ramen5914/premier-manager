@@ -542,50 +542,73 @@ async function sendFifteenMinuteReminder(bot: Client, event: PremierEvent): Prom
 }
 
 async function sendPostMatchPrompt(bot: Client, event: PremierEvent): Promise<void> {
-  if (event.type !== 'Match') return;
-  const info = parseSeasonWeek(event.eventId);
-  if (!info) return;
-  const currentCount = (db.get(weekKey(info.season, info.week)) as number) || 0;
-  if (currentCount >= 2) return; // already max
+  if (event.type !== 'Match' && event.type !== 'Playoff') return;
+
   const thread = await createEventThread(bot, event);
   if (!thread) return;
-  const perms = thread.permissionsFor(bot.user!.id);
-  if (!perms || !perms.has(PermissionFlagsBits.AddReactions)) {
-    await dmOwner(
-      bot,
-      `Missing AddReactions permission for post-match prompt in event ${event.eventId}.`,
-    );
-  }
 
-  // Determine which reactions to show based on remaining capacity
-  const remaining = 2 - currentCount;
-  const maxOptions = Math.min(2, remaining);
-  let promptText = 'React with ';
-  const reactions: string[] = ['0️⃣'];
+  const embed = new EmbedBuilder()
+    .setTitle('Record Match Results')
+    .setDescription(
+      'Match 1: ❓ Not recorded\nMatch 2: ❓ Not recorded\n\n' +
+        '**Win:** +100 points\n**Loss:** +25 points\n**Unplayed:** No change',
+    )
+    .setColor(0x61afef)
+    .setTimestamp();
 
-  if (maxOptions >= 1) {
-    promptText += '0️⃣ or 1️⃣';
-    reactions.push('1️⃣');
-  }
-  if (maxOptions >= 2) {
-    promptText = 'React with 0️⃣, 1️⃣, or 2️⃣';
-    reactions.push('2️⃣');
-  } else if (maxOptions === 1) {
-    // Only show 0 or 1 if only 1 spot remains
-    promptText = 'React with 0️⃣ or 1️⃣';
-  }
-  promptText += ' to indicate matches played today.';
+  const match1Buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('match1_result_win')
+      .setLabel('Match 1: Win')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🏆'),
+    new ButtonBuilder()
+      .setCustomId('match1_result_loss')
+      .setLabel('Match 1: Loss')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('💔'),
+    new ButtonBuilder()
+      .setCustomId('match1_result_unplayed')
+      .setLabel('Match 1: Unplayed')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('⏸️'),
+  );
 
-  const msg = await thread.send(promptText);
+  const match2Buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('match2_result_win')
+      .setLabel('Match 2: Win')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🏆'),
+    new ButtonBuilder()
+      .setCustomId('match2_result_loss')
+      .setLabel('Match 2: Loss')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('💔'),
+    new ButtonBuilder()
+      .setCustomId('match2_result_unplayed')
+      .setLabel('Match 2: Unplayed')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('⏸️'),
+  );
+
+  const currentScore = (db.get('score') as number) || 0;
+  const qualificationThreshold = 600;
+
+  const scoreEmbed = new EmbedBuilder()
+    .setTitle('Current Team Score')
+    .setDescription(
+      `**${currentScore} points**\n${currentScore >= qualificationThreshold ? '✅ Qualified for Playoffs' : `❌ Need ${qualificationThreshold - currentScore} more points to qualify`}`,
+    )
+    .setColor(currentScore >= qualificationThreshold ? 0x98c379 : 0xe06c75);
+
+  const msg = await thread.send({
+    embeds: [embed, scoreEmbed],
+    components: [match1Buttons, match2Buttons],
+  });
+
   event.postMatchPromptMessageId = msg.id;
   persistEvent(event);
-  try {
-    for (const reaction of reactions) {
-      await msg.react(reaction);
-    }
-  } catch (e) {
-    console.error('Failed adding reactions:', e);
-  }
 }
 
 function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {

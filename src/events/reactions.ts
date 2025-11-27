@@ -1,98 +1,123 @@
-import { Discord, On } from 'discordx';
-import { MessageReaction, User, type Guild } from 'discord.js';
+import { ButtonComponent, Discord } from 'discordx';
+import { type ButtonInteraction, EmbedBuilder, type Guild } from 'discord.js';
 import Enmap from 'enmap';
 import type { PremierEvent } from '../types/event.js';
-import { parseSeasonWeek, weekKey } from '../utils/week.js';
 
 @Discord()
-export class ReactionHandler {
+export class MatchResultHandler {
   private db = new Enmap({ name: 'premier_data' });
 
-  @On({ event: 'messageReactionAdd' })
-  async handleReaction(reaction: MessageReaction, user: User): Promise<void> {
+  @ButtonComponent({ id: /^match1_result_.*/ })
+  async handleMatch1Result(interaction: ButtonInteraction): Promise<void> {
+    await this.handleMatchResult(interaction, 'match1');
+  }
+
+  @ButtonComponent({ id: /^match2_result_.*/ })
+  async handleMatch2Result(interaction: ButtonInteraction): Promise<void> {
+    await this.handleMatchResult(interaction, 'match2');
+  }
+
+  private async handleMatchResult(
+    interaction: ButtonInteraction,
+    matchNumber: 'match1' | 'match2',
+  ): Promise<void> {
+    if (!interaction.guild) return;
+
+    const guild = interaction.guild as Guild;
+    const teamRoleId = (this.db.get('teamRoleId') as string)?.replace(/[<>@&]/g, '');
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return;
+
+    if (!teamRoleId || !member.roles.cache.has(teamRoleId)) {
+      await interaction.reply({
+        content: 'Only team members can record match results.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find(
+      (e) => e.postMatchPromptMessageId === interaction.message.id,
+    );
+
+    if (!event) {
+      await interaction.reply({
+        content: 'Event not found.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const [, , result] = interaction.customId.split('_');
+    const resultValue = result as 'win' | 'loss' | 'unplayed';
+
+    if (matchNumber === 'match1') {
+      event.match1Result = resultValue;
+    } else {
+      event.match2Result = resultValue;
+    }
+
+    const currentScore = (this.db.get('score') as number) || 0;
+    let newScore = currentScore;
+    let scoreChange = 0;
+
+    if (resultValue === 'win') {
+      scoreChange = 100;
+      newScore += 100;
+    } else if (resultValue === 'loss') {
+      scoreChange = 25;
+      newScore += 25;
+    }
+
+    this.db.set('score', newScore);
+    event.postMatchCountRecorded = true;
+
+    const idx = scheduledEvents.findIndex((e) => e.eventId === event.eventId);
+    if (idx !== -1) scheduledEvents[idx] = event;
+    this.db.set('scheduledEvents', scheduledEvents);
+
+    const qualificationThreshold = 600;
+    const qualified = newScore >= qualificationThreshold;
+    const resultEmoji = resultValue === 'win' ? '🏆' : resultValue === 'loss' ? '💔' : '⏸️';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Match ${matchNumber === 'match1' ? '1' : '2'} Result Recorded`)
+      .setColor(resultValue === 'win' ? 0x98c379 : resultValue === 'loss' ? 0xe06c75 : 0x61afef)
+      .addFields(
+        { name: 'Result', value: `${resultEmoji} ${resultValue.toUpperCase()}`, inline: true },
+        {
+          name: 'Score Change',
+          value: scoreChange > 0 ? `+${scoreChange} points` : 'No change',
+          inline: true,
+        },
+      )
+      .addFields({
+        name: 'Current Score',
+        value: `${newScore} points\n${qualified ? '✅ Qualified for Playoffs' : `❌ Need ${qualificationThreshold - newScore} more points`}`,
+        inline: false,
+      })
+      .setTimestamp();
+
+    await interaction.reply({
+      embeds: [embed],
+    });
+
     try {
-      if (user.bot) return;
-      // Resolve partials
-      if (reaction.partial) await reaction.fetch();
-      const message = reaction.message;
-      if (!message.guildId) return;
-      const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
-      const event = scheduledEvents.find((e) => e.postMatchPromptMessageId === message.id);
-      if (!event) return; // not a prompt message
-      const guild = message.guild as Guild;
-      const teamRoleId = (this.db.get('teamRoleId') as string)?.replace(/[<>@&]/g, '');
-      const member = await guild.members.fetch(user.id).catch(() => null);
-      if (!member) return;
+      const originalMessage = await interaction.message.fetch();
+      const updatedEmbed = EmbedBuilder.from(originalMessage.embeds[0])
+        .setDescription(
+          `Match 1: ${event.match1Result ? `${event.match1Result === 'win' ? '🏆 Win' : event.match1Result === 'loss' ? '💔 Loss' : '⏸️ Unplayed'}` : '❓ Not recorded'}\n` +
+            `Match 2: ${event.match2Result ? `${event.match2Result === 'win' ? '🏆 Win' : event.match2Result === 'loss' ? '💔 Loss' : '⏸️ Unplayed'}` : '❓ Not recorded'}`,
+        )
+        .setColor(0x98c379);
 
-      // Check if user has team role
-      if (!teamRoleId || !member.roles.cache.has(teamRoleId)) {
-        return; // only teammates can record
-      }
-
-      const emoji = reaction.emoji.name;
-      if (!['0️⃣', '1️⃣', '2️⃣'].includes(emoji || '')) return;
-      const info = parseSeasonWeek(event.eventId);
-      if (!info) return;
-      const key = weekKey(info.season, info.week);
-      let matchesPlayedToday = 0;
-      if (emoji === '1️⃣') matchesPlayedToday = 1;
-      else if (emoji === '2️⃣') matchesPlayedToday = 2;
-
-      // Get current week total and increment by today's count
-      const currentWeekTotal = (this.db.get(key) as number) || 0;
-      const newWeekTotal = currentWeekTotal + matchesPlayedToday;
-      this.db.set(key, newWeekTotal);
-      event.postMatchCountRecorded = true;
-
-      // Send confirmation message in thread
-      try {
-        if ('send' in message.channel) {
-          await message.channel.send(
-            `✅ Recorded ${matchesPlayedToday} match${matchesPlayedToday === 1 ? '' : 'es'} played today. Week total: ${newWeekTotal}/2`,
-          );
-        }
-      } catch (e) {
-        console.error('Failed to send confirmation:', e);
-      }
-
-      // Disable further signups if 2 matches reached
-      if (newWeekTotal >= 2) {
-        event.signupsDisabled = true;
-        // Also disable remaining same-week match events
-        for (const ev of scheduledEvents) {
-          if (
-            ev.eventId !== event.eventId &&
-            ev.type === 'Match' &&
-            ev.week === event.week &&
-            !ev.signupsDisabled
-          ) {
-            ev.signupsDisabled = true;
-          }
-        }
-      } else if (matchesPlayedToday > 0) {
-        // Announce need for more signups only if matches were played today
-        const announcementChannelMention = this.db.get('announcementChannel') as string;
-        const channelId = announcementChannelMention?.replace(/[<>#]/g, '');
-        if (channelId) {
-          try {
-            const channel = await guild.channels.fetch(channelId);
-            if (channel?.isTextBased()) {
-              const remaining = 2 - newWeekTotal;
-              await channel.send(
-                `Need signups for ${remaining} more match${remaining === 1 ? '' : 'es'} this week (W${event.week}).`,
-              );
-            }
-          } catch (e) {
-            console.error('Failed sending signup encouragement:', e);
-          }
-        }
-      }
-      // Persist events
-      const idx = scheduledEvents.findIndex((e) => e.eventId === event.eventId);
-      if (idx !== -1) scheduledEvents[idx] = event;
-      this.db.set('scheduledEvents', scheduledEvents);
-    } catch (e) {
-      console.error('Reaction handler error:', e);
+      await originalMessage.edit({
+        embeds: [updatedEmbed],
+        components: originalMessage.components,
+      });
+    } catch {
+      // Ignore edit errors
     }
   }
 }
