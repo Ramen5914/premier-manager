@@ -98,10 +98,9 @@ export class EventButtons {
           `${responseList}` +
           `Reply with a number:\n` +
           `**1** - Manage responses (add/remove/move people)\n` +
-          `**2** - Cancel this event\n` +
-          `**3** - Change the map\n` +
-          `**4** - Reschedule the event\n` +
-          `**5** - Mark as completed\n\n` +
+          `**2** - Disable signups\n` +
+          `**3** - Reschedule the event\n` +
+          `**4** - Mark as completed\n\n` +
           `Type **0** to cancel.`,
       );
 
