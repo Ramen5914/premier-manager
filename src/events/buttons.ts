@@ -1,4 +1,4 @@
-import { ButtonInteraction, EmbedBuilder, PublicThreadChannel, type GuildMember } from 'discord.js';
+import { ButtonInteraction, EmbedBuilder, MessageFlags, PublicThreadChannel, type GuildMember } from 'discord.js';
 import { ButtonComponent, Discord } from 'discordx';
 import Enmap from 'enmap';
 import type { PremierEvent, EventResponses } from '../types/event.js';
@@ -39,7 +39,7 @@ export class EventButtons {
     if (!isAuthorized) {
       await interaction.reply({
         content: 'Only team owners and captains can edit events.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -52,7 +52,7 @@ export class EventButtons {
     if (!event) {
       await interaction.reply({
         content: 'Event not found.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -60,7 +60,7 @@ export class EventButtons {
     // Acknowledge the interaction
     await interaction.reply({
       content: 'Check your DMs for edit options!',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
 
     // DM the user with options
@@ -88,15 +88,15 @@ export class EventButtons {
 
       await interaction.user.send(
         `**Edit Event Options**\n` +
-          `Event: ${season} W${event.week} ${event.type} - ${event.map} (${formattedDate})\n\n` +
-          `${responseList}` +
-          `Reply with a number:\n` +
-          `**1** - Manage responses (add/remove/move people)\n` +
-          `**2** - Cancel this event\n` +
-          `**3** - Change the map\n` +
-          `**4** - Reschedule the event\n` +
-          `**5** - Mark as completed\n\n` +
-          `Type **0** to cancel.`,
+        `Event: ${season} W${event.week} ${event.type} - ${event.map} (${formattedDate})\n\n` +
+        `${responseList}` +
+        `Reply with a number:\n` +
+        `**1** - Manage responses (add/remove/move people)\n` +
+        `**2** - Cancel this event\n` +
+        `**3** - Change the map\n` +
+        `**4** - Reschedule the event\n` +
+        `**5** - Mark as completed\n\n` +
+        `Type **0** to cancel.`,
       );
 
       // Store pending edit with event ID
