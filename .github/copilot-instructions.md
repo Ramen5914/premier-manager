@@ -19,10 +19,21 @@ Discord bot for managing Valorant Premier team schedules, practices, and matches
   - `{eventId}_responses` for event attendance tracking
 
 ### Event System
-Events follow strict 7-week structure (35 total events):
-- Wed 7pm-8pm Practice, Thu 7pm-8pm Match, Fri 8pm-9pm Practice, Sat 8pm-9pm Match, Sun 7pm-8pm Match
-- Event IDs format: `{season}-W{week}-{type}-{day}` (e.g., `V25A1-W1-Match-Thu`)
+Events follow strict 7-week structure:
+- **Weeks 1-6 (5 events each):** Wed 7pm-8pm Practice, Thu 7pm-8pm Match, Fri 8pm-9pm Practice, Sat 8pm-9pm Match, Sun 7pm-8pm Match
+- **Week 7 (3 events):** Thu 7pm-8pm Match, Sat 8pm-9pm Match, Sun 7:00pm-7:15pm Playoff (no Wed/Fri practice)
+- Event IDs format: `{season}-W{week}-{type}-{day}` (e.g., `V25A1-W1-Match-Thu`, `V25A1-W7-Playoff-Sun`)
+- Event types: `'Practice' | 'Match' | 'Playoff'`
 - Timezone handling: All dates use `America/Los_Angeles` timezone via `toLocaleString` before creating Date objects
+
+### Scoring System
+- **Win:** +100 points
+- **Loss:** +25 points
+- **Unplayed:** No change
+- **Playoff Qualification:** 600 points minimum
+- Score tracked in db key `score` (reset to 0 on season setup)
+- Match results stored per event: `event.match1Result`, `event.match2Result` (values: `'win' | 'loss' | 'unplayed'`)
+- Post-match prompts use button interactions (not reaction emojis) to record results
 
 ## Development Patterns
 
