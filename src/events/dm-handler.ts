@@ -315,10 +315,38 @@ export class DMHandler {
   @ButtonComponent({ id: /^dm-done-.*/ })
   async handleDoneButton(interaction: ButtonInteraction): Promise<void> {
     const userId = interaction.user.id;
+    const pendingEdit = pendingEdits.get(userId);
+
+    if (!pendingEdit) {
+      await interaction.update({
+        content: '✅ Done managing responses.',
+        components: [],
+      });
+      return;
+    }
+
+    // Get the event to find the message and channel
+    const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
+    const event = scheduledEvents.find((e) => e.eventId === pendingEdit.eventId);
+
+    let channelLink = '';
+    if (event?.messageId) {
+      const channelMention =
+        event.type === 'Practice'
+          ? (this.db.get('practiceChannel') as string)
+          : (this.db.get('matchChannel') as string);
+      const channelId = channelMention?.replace(/[<>#]/g, '');
+
+      if (channelId && pendingEdit.guildId) {
+        // Create a jump link to the event message
+        channelLink = `\n\n[Return to event message](https://discord.com/channels/${pendingEdit.guildId}/${channelId}/${event.messageId})`;
+      }
+    }
+
     pendingEdits.delete(userId);
 
     await interaction.update({
-      content: '✅ Done managing responses.',
+      content: `✅ Done managing responses.${channelLink}`,
       components: [],
     });
   }
