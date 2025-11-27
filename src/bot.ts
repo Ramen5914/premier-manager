@@ -10,6 +10,7 @@ export const bot = new Client({
     IntentsBitField.Flags.GuildMessageReactions,
     IntentsBitField.Flags.GuildVoiceStates,
     IntentsBitField.Flags.MessageContent,
+    IntentsBitField.Flags.DirectMessages,
   ],
   silent: false,
 
