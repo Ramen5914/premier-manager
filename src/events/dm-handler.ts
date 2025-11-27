@@ -325,28 +325,22 @@ export class DMHandler {
       return;
     }
 
-    // Get the event to find the message and channel
+    // Get the event to find the channel
     const scheduledEvents = (this.db.get('scheduledEvents') as PremierEvent[]) || [];
     const event = scheduledEvents.find((e) => e.eventId === pendingEdit.eventId);
 
-    let channelLink = '';
-    if (event?.messageId) {
-      const channelMention =
+    let channelMention = '';
+    if (event) {
+      channelMention =
         event.type === 'Practice'
           ? (this.db.get('practiceChannel') as string)
           : (this.db.get('matchChannel') as string);
-      const channelId = channelMention?.replace(/[<>#]/g, '');
-
-      if (channelId && pendingEdit.guildId) {
-        // Create a jump link to the event message
-        channelLink = `\n\n[Return to event message](https://discord.com/channels/${pendingEdit.guildId}/${channelId}/${event.messageId})`;
-      }
     }
 
     pendingEdits.delete(userId);
 
     await interaction.update({
-      content: `✅ Done managing responses.${channelLink}`,
+      content: `✅ Done managing responses.\n\nReturn to ${channelMention}`,
       components: [],
     });
   }
