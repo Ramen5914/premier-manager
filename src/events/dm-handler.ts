@@ -12,48 +12,65 @@ export class DMHandler {
   private db = new Enmap({ name: 'premier_data' });
 
   setPendingEdit(userId: string, eventId: string, stage: string): void {
+    console.log(
+      `[DMHandler] setPendingEdit called: userId=${userId}, eventId=${eventId}, stage=${stage}`,
+    );
     pendingEdits.set(userId, { eventId, stage });
+    console.log(`[DMHandler] pendingEdits size: ${pendingEdits.size}`);
   }
 
   @On()
   async messageCreate([message]: ArgsOf<'messageCreate'>): Promise<void> {
+    console.log(
+      `[DMHandler.messageCreate] Message received. Channel type: ${message.channel.type}, Author bot: ${message.author.bot}`,
+    );
+
     // Only handle DMs
-    if (message.channel.type !== ChannelType.DM || message.author.bot) return;
+    if (message.channel.type !== ChannelType.DM || message.author.bot) {
+      console.log(`[DMHandler.messageCreate] Ignoring message (not DM or is bot)`);
+      return;
+    }
 
     const userId = message.author.id;
     const content = message.content.trim();
 
-    console.debug(`DMHandler: messageCreate from ${userId}: "${content}"`);
+    console.log(
+      `[DMHandler.messageCreate] DM from ${userId} (${message.author.tag}): "${content}"`,
+    );
+    console.log(`[DMHandler.messageCreate] Current pendingEdits size: ${pendingEdits.size}`);
+    console.log(`[DMHandler.messageCreate] All pending users:`, Array.from(pendingEdits.keys()));
 
     // Check if user has a pending edit
     const pendingEdit = pendingEdits.get(userId);
 
     if (!pendingEdit) {
-      console.debug(`DMHandler: no pending edit for ${userId}`);
+      console.log(`[DMHandler.messageCreate] No pending edit found for ${userId}`);
       return;
     }
 
-    console.debug(`DMHandler: pending edit for ${userId}:`, pendingEdit);
+    console.log(`[DMHandler.messageCreate] Found pending edit for ${userId}:`, pendingEdit);
 
     // Handle based on current stage
     try {
       if (pendingEdit.stage === 'main_menu') {
+        console.log(`[DMHandler.messageCreate] Routing to handleMainMenu`);
         await this.handleMainMenu(message, pendingEdit.eventId, content);
       } else if (pendingEdit.stage === 'manage_responses') {
+        console.log(`[DMHandler.messageCreate] Routing to handleManageResponsesInput`);
         await this.handleManageResponsesInput(message, pendingEdit.eventId);
       } else {
-        console.debug(`DMHandler: unknown stage for ${userId}: ${pendingEdit.stage}`);
+        console.log(`[DMHandler.messageCreate] Unknown stage: ${pendingEdit.stage}`);
       }
     } catch (err) {
-      console.error('DMHandler: error handling DM messageCreate:', err);
+      console.error('[DMHandler.messageCreate] Error handling message:', err);
       try {
         await message.reply('An error occurred while processing your request. Please try again.');
       } catch (e) {
-        // Last resort: send raw DM
+        console.error('[DMHandler.messageCreate] Failed to send error reply:', e);
         try {
           await message.author.send('An error occurred while processing your request.');
-        } catch {
-          console.error('DMHandler: failed to send fallback DM to user', userId);
+        } catch (e2) {
+          console.error('[DMHandler.messageCreate] Failed to send fallback DM:', e2);
         }
       }
     }
@@ -61,73 +78,109 @@ export class DMHandler {
 
   private async handleMainMenu(message: Message, eventId: string, content: string): Promise<void> {
     const userId = message.author.id;
-    console.debug(`DMHandler.handleMainMenu: ${userId} selected "${content}" for event ${eventId}`);
+    console.log(
+      `[DMHandler.handleMainMenu] Called with userId=${userId}, eventId=${eventId}, content="${content}"`,
+    );
 
     if (content === '0') {
+      console.log(`[DMHandler.handleMainMenu] User selected cancel (0)`);
       pendingEdits.delete(userId);
       try {
         await message.reply('❌ Cancelled.');
       } catch (err) {
-        console.error('DMHandler: failed to send cancel reply:', err);
+        console.error('[DMHandler.handleMainMenu] Failed to send cancel reply:', err);
       }
       return;
     }
 
     if (content === '1') {
-      // Ensure stage is set before attempting to send the instructions
+      console.log(`[DMHandler.handleMainMenu] User selected manage responses (1)`);
+      console.log(
+        `[DMHandler.handleMainMenu] Setting stage to manage_responses BEFORE calling handleManageResponses`,
+      );
+
+      // Set stage BEFORE attempting to send
       pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+      console.log(
+        `[DMHandler.handleMainMenu] Stage set. Current pendingEdit:`,
+        pendingEdits.get(userId),
+      );
+
       try {
+        console.log(`[DMHandler.handleMainMenu] Calling handleManageResponses...`);
         await this.handleManageResponses(message, eventId);
+        console.log(`[DMHandler.handleMainMenu] handleManageResponses completed successfully`);
       } catch (err) {
-        console.error('DMHandler: handleManageResponses failed:', err);
-        // Attempt fallback reply
+        console.error('[DMHandler.handleMainMenu] handleManageResponses threw error:', err);
         try {
           await message.author.send(
             'Unable to send the manage responses menu in this DM. Please check your privacy settings.',
           );
         } catch (e) {
-          console.error('DMHandler: fallback send failed:', e);
+          console.error('[DMHandler.handleMainMenu] Fallback send failed:', e);
         }
       }
-    } else if (content === '2') {
+      return;
+    }
+
+    if (content === '2') {
+      console.log(`[DMHandler.handleMainMenu] User selected cancel event (2)`);
       try {
         await message.reply('Cancel event feature coming soon!');
       } catch (err) {
-        console.error('DMHandler: failed to reply for option 2:', err);
+        console.error('[DMHandler.handleMainMenu] Failed to reply for option 2:', err);
       }
       pendingEdits.delete(userId);
-    } else if (content === '3') {
+      return;
+    }
+
+    if (content === '3') {
+      console.log(`[DMHandler.handleMainMenu] User selected change map (3)`);
       try {
         await message.reply('Change map feature coming soon!');
       } catch (err) {
-        console.error('DMHandler: failed to reply for option 3:', err);
+        console.error('[DMHandler.handleMainMenu] Failed to reply for option 3:', err);
       }
       pendingEdits.delete(userId);
-    } else if (content === '4') {
+      return;
+    }
+
+    if (content === '4') {
+      console.log(`[DMHandler.handleMainMenu] User selected reschedule (4)`);
       try {
         await message.reply('Reschedule feature coming soon!');
       } catch (err) {
-        console.error('DMHandler: failed to reply for option 4:', err);
+        console.error('[DMHandler.handleMainMenu] Failed to reply for option 4:', err);
       }
       pendingEdits.delete(userId);
-    } else if (content === '5') {
+      return;
+    }
+
+    if (content === '5') {
+      console.log(`[DMHandler.handleMainMenu] User selected mark completed (5)`);
       try {
         await message.reply('Mark completed feature coming soon!');
       } catch (err) {
-        console.error('DMHandler: failed to reply for option 5:', err);
+        console.error('[DMHandler.handleMainMenu] Failed to reply for option 5:', err);
       }
       pendingEdits.delete(userId);
-    } else {
-      try {
-        await message.reply('Invalid option. Please reply with 0-5.');
-      } catch (err) {
-        console.error('DMHandler: failed to reply for invalid option:', err);
-      }
+      return;
+    }
+
+    console.log(`[DMHandler.handleMainMenu] Invalid option selected: "${content}"`);
+    try {
+      await message.reply('Invalid option. Please reply with 0-5.');
+    } catch (err) {
+      console.error('[DMHandler.handleMainMenu] Failed to reply for invalid option:', err);
     }
   }
 
   private async handleManageResponses(message: Message, eventId: string): Promise<void> {
     const userId = message.author.id;
+    console.log(
+      `[DMHandler.handleManageResponses] Called with userId=${userId}, eventId=${eventId}`,
+    );
+
     const helpText =
       `**Manage Event Responses**\n\n` +
       `Commands:\n` +
@@ -140,17 +193,25 @@ export class DMHandler {
       `• \`add @user to tentative\` - Add user to Tentative\n\n` +
       `Type \`done\` when finished.`;
 
-    // Ensure stage is recorded before replying so incoming messages are routed correctly
-    pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+    console.log(`[DMHandler.handleManageResponses] About to call message.reply with help text`);
     try {
-      await message.reply(helpText);
+      const reply = await message.reply(helpText);
+      console.log(
+        `[DMHandler.handleManageResponses] Successfully sent reply. Message ID: ${reply.id}`,
+      );
     } catch (err) {
-      console.error('DMHandler: failed to send manage responses helpText:', err);
-      // Fallback: attempt to DM directly
+      console.error('[DMHandler.handleManageResponses] message.reply failed with error:', err);
+      console.log(`[DMHandler.handleManageResponses] Attempting fallback: message.author.send`);
       try {
-        await message.author.send(helpText);
+        const dm = await message.author.send(helpText);
+        console.log(
+          `[DMHandler.handleManageResponses] Fallback DM sent successfully. Message ID: ${dm.id}`,
+        );
       } catch (e) {
-        console.error('DMHandler: fallback DM failed for manage responses:', e);
+        console.error(
+          '[DMHandler.handleManageResponses] Fallback message.author.send also failed:',
+          e,
+        );
       }
     }
   }
@@ -159,18 +220,21 @@ export class DMHandler {
     const userId = message.author.id;
     const content = message.content.toLowerCase().trim();
 
-    console.debug(`DMHandler.handleManageResponsesInput: ${userId} -> "${content}" for event ${eventId}`);
+    console.log(
+      `[DMHandler.handleManageResponsesInput] Called with userId=${userId}, eventId=${eventId}, content="${content}"`,
+    );
 
     if (content === 'done') {
+      console.log(`[DMHandler.handleManageResponsesInput] User typed 'done', cleaning up`);
       pendingEdits.delete(userId);
       try {
         await message.reply('✅ Done managing responses.');
       } catch (err) {
-        console.error('DMHandler: failed to send done reply:', err);
+        console.error('[DMHandler.handleManageResponsesInput] Failed to send done reply:', err);
         try {
           await message.author.send('✅ Done managing responses.');
         } catch (e) {
-          console.error('DMHandler: fallback send failed for done message:', e);
+          console.error('[DMHandler.handleManageResponsesInput] Fallback done message failed:', e);
         }
       }
       return;
@@ -181,7 +245,12 @@ export class DMHandler {
     const removeMatch = content.match(/^remove <@!?(\d+)>$/);
     const addMatch = content.match(/^add <@!?(\d+)> to (accepted|declined|tentative)$/);
 
+    console.log(
+      `[DMHandler.handleManageResponsesInput] Command parsing: moveMatch=${!!moveMatch}, removeMatch=${!!removeMatch}, addMatch=${!!addMatch}`,
+    );
+
     if (!moveMatch && !removeMatch && !addMatch) {
+      console.log(`[DMHandler.handleManageResponsesInput] No valid command matched`);
       await message.reply('Invalid command. Please use the format shown above.');
       return;
     }
@@ -191,9 +260,16 @@ export class DMHandler {
     const targetEvent = scheduledEvents.find((e) => e.eventId === eventId);
 
     if (!targetEvent) {
+      console.error(
+        `[DMHandler.handleManageResponsesInput] Could not find event with ID: ${eventId}`,
+      );
       await message.reply('Could not find event to edit.');
       return;
     }
+
+    console.log(
+      `[DMHandler.handleManageResponsesInput] Found target event: ${targetEvent.eventId}`,
+    );
 
     const responses =
       (this.db.get(`${targetEvent.eventId}_responses`) as EventResponses) ||
@@ -201,6 +277,9 @@ export class DMHandler {
 
     if (moveMatch) {
       const [, targetUserId, targetList] = moveMatch;
+      console.log(
+        `[DMHandler.handleManageResponsesInput] Moving user ${targetUserId} to ${targetList}`,
+      );
       // Remove from all lists
       responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
       responses.declined = responses.declined.filter((id) => id !== targetUserId);
@@ -211,6 +290,7 @@ export class DMHandler {
       await message.reply(`✅ Moved <@${targetUserId}> to ${targetList}.`);
     } else if (removeMatch) {
       const [, targetUserId] = removeMatch;
+      console.log(`[DMHandler.handleManageResponsesInput] Removing user ${targetUserId}`);
       responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
       responses.declined = responses.declined.filter((id) => id !== targetUserId);
       responses.tentative = responses.tentative.filter((id) => id !== targetUserId);
@@ -218,6 +298,9 @@ export class DMHandler {
       await message.reply(`✅ Removed <@${targetUserId}> from all lists.`);
     } else if (addMatch) {
       const [, targetUserId, targetList] = addMatch;
+      console.log(
+        `[DMHandler.handleManageResponsesInput] Adding user ${targetUserId} to ${targetList}`,
+      );
       // Remove from all lists first (prevent duplicates)
       responses.accepted = responses.accepted.filter((id) => id !== targetUserId);
       responses.declined = responses.declined.filter((id) => id !== targetUserId);
@@ -228,12 +311,18 @@ export class DMHandler {
       await message.reply(`✅ Added <@${targetUserId}> to ${targetList}.`);
     }
 
+    console.log(`[DMHandler.handleManageResponsesInput] Calling updateEventMessage`);
     // Update the event message
     await this.updateEventMessage(targetEvent, responses);
   }
 
   private async updateEventMessage(event: PremierEvent, responses: EventResponses): Promise<void> {
-    if (!event.messageId) return;
+    console.log(`[DMHandler.updateEventMessage] Called for event ${event.eventId}`);
+
+    if (!event.messageId) {
+      console.log(`[DMHandler.updateEventMessage] No messageId found for event ${event.eventId}`);
+      return;
+    }
 
     try {
       const channelMention =
@@ -242,15 +331,34 @@ export class DMHandler {
           : (this.db.get('matchChannel') as string);
       const channelId = channelMention?.replace(/[<>#]/g, '');
 
-      if (!channelId) return;
+      console.log(
+        `[DMHandler.updateEventMessage] Channel mention: ${channelMention}, extracted ID: ${channelId}`,
+      );
+
+      if (!channelId) {
+        console.log(`[DMHandler.updateEventMessage] No valid channel ID`);
+        return;
+      }
 
       const channel = await bot.channels.fetch(channelId);
-      if (!channel?.isTextBased()) return;
+      console.log(
+        `[DMHandler.updateEventMessage] Fetched channel: ${channel?.id}, isTextBased: ${channel?.isTextBased()}`,
+      );
+
+      if (!channel?.isTextBased()) {
+        console.log(`[DMHandler.updateEventMessage] Channel is not text-based`);
+        return;
+      }
 
       const message = await channel.messages.fetch(event.messageId);
+      console.log(`[DMHandler.updateEventMessage] Fetched message: ${message.id}`);
+
       const currentEmbed = message.embeds[0];
 
-      if (!currentEmbed) return;
+      if (!currentEmbed) {
+        console.log(`[DMHandler.updateEventMessage] No embed found in message`);
+        return;
+      }
 
       // Recreate embed with updated responses
       const season = this.db.get('season') as string;
@@ -300,8 +408,9 @@ export class DMHandler {
       };
 
       await message.edit({ embeds: [updatedEmbed] });
+      console.log(`[DMHandler.updateEventMessage] Successfully updated message embed`);
     } catch (error) {
-      console.error('Failed to update event message:', error);
+      console.error('[DMHandler.updateEventMessage] Failed to update event message:', error);
     }
   }
 }
