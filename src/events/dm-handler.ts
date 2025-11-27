@@ -23,73 +23,156 @@ export class DMHandler {
     const userId = message.author.id;
     const content = message.content.trim();
 
+    console.debug(`DMHandler: messageCreate from ${userId}: "${content}"`);
+
     // Check if user has a pending edit
     const pendingEdit = pendingEdits.get(userId);
 
-    if (!pendingEdit) return;
+    if (!pendingEdit) {
+      console.debug(`DMHandler: no pending edit for ${userId}`);
+      return;
+    }
+
+    console.debug(`DMHandler: pending edit for ${userId}:`, pendingEdit);
 
     // Handle based on current stage
-    if (pendingEdit.stage === 'main_menu') {
-      await this.handleMainMenu(message, pendingEdit.eventId, content);
-    } else if (pendingEdit.stage === 'manage_responses') {
-      await this.handleManageResponsesInput(message, pendingEdit.eventId);
+    try {
+      if (pendingEdit.stage === 'main_menu') {
+        await this.handleMainMenu(message, pendingEdit.eventId, content);
+      } else if (pendingEdit.stage === 'manage_responses') {
+        await this.handleManageResponsesInput(message, pendingEdit.eventId);
+      } else {
+        console.debug(`DMHandler: unknown stage for ${userId}: ${pendingEdit.stage}`);
+      }
+    } catch (err) {
+      console.error('DMHandler: error handling DM messageCreate:', err);
+      try {
+        await message.reply('An error occurred while processing your request. Please try again.');
+      } catch (e) {
+        // Last resort: send raw DM
+        try {
+          await message.author.send('An error occurred while processing your request.');
+        } catch {
+          console.error('DMHandler: failed to send fallback DM to user', userId);
+        }
+      }
     }
   }
 
   private async handleMainMenu(message: Message, eventId: string, content: string): Promise<void> {
     const userId = message.author.id;
+    console.debug(`DMHandler.handleMainMenu: ${userId} selected "${content}" for event ${eventId}`);
 
     if (content === '0') {
       pendingEdits.delete(userId);
-      await message.reply('❌ Cancelled.');
+      try {
+        await message.reply('❌ Cancelled.');
+      } catch (err) {
+        console.error('DMHandler: failed to send cancel reply:', err);
+      }
       return;
     }
 
     if (content === '1') {
-      await this.handleManageResponses(message, eventId);
+      // Ensure stage is set before attempting to send the instructions
+      pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+      try {
+        await this.handleManageResponses(message, eventId);
+      } catch (err) {
+        console.error('DMHandler: handleManageResponses failed:', err);
+        // Attempt fallback reply
+        try {
+          await message.author.send(
+            'Unable to send the manage responses menu in this DM. Please check your privacy settings.',
+          );
+        } catch (e) {
+          console.error('DMHandler: fallback send failed:', e);
+        }
+      }
     } else if (content === '2') {
-      await message.reply('Cancel event feature coming soon!');
+      try {
+        await message.reply('Cancel event feature coming soon!');
+      } catch (err) {
+        console.error('DMHandler: failed to reply for option 2:', err);
+      }
       pendingEdits.delete(userId);
     } else if (content === '3') {
-      await message.reply('Change map feature coming soon!');
+      try {
+        await message.reply('Change map feature coming soon!');
+      } catch (err) {
+        console.error('DMHandler: failed to reply for option 3:', err);
+      }
       pendingEdits.delete(userId);
     } else if (content === '4') {
-      await message.reply('Reschedule feature coming soon!');
+      try {
+        await message.reply('Reschedule feature coming soon!');
+      } catch (err) {
+        console.error('DMHandler: failed to reply for option 4:', err);
+      }
       pendingEdits.delete(userId);
     } else if (content === '5') {
-      await message.reply('Mark completed feature coming soon!');
+      try {
+        await message.reply('Mark completed feature coming soon!');
+      } catch (err) {
+        console.error('DMHandler: failed to reply for option 5:', err);
+      }
       pendingEdits.delete(userId);
     } else {
-      await message.reply('Invalid option. Please reply with 0-5.');
+      try {
+        await message.reply('Invalid option. Please reply with 0-5.');
+      } catch (err) {
+        console.error('DMHandler: failed to reply for invalid option:', err);
+      }
     }
   }
 
   private async handleManageResponses(message: Message, eventId: string): Promise<void> {
     const userId = message.author.id;
-
-    await message.reply(
+    const helpText =
       `**Manage Event Responses**\n\n` +
-        `Commands:\n` +
-        `• \`move @user to accepted\` - Move user to Accepted\n` +
-        `• \`move @user to declined\` - Move user to Declined\n` +
-        `• \`move @user to tentative\` - Move user to Tentative\n` +
-        `• \`remove @user\` - Remove user from all lists\n` +
-        `• \`add @user to accepted\` - Add user to Accepted\n` +
-        `• \`add @user to declined\` - Add user to Declined\n` +
-        `• \`add @user to tentative\` - Add user to Tentative\n\n` +
-        `Type \`done\` when finished.`,
-    );
+      `Commands:\n` +
+      `• \`move @user to accepted\` - Move user to Accepted\n` +
+      `• \`move @user to declined\` - Move user to Declined\n` +
+      `• \`move @user to tentative\` - Move user to Tentative\n` +
+      `• \`remove @user\` - Remove user from all lists\n` +
+      `• \`add @user to accepted\` - Add user to Accepted\n` +
+      `• \`add @user to declined\` - Add user to Declined\n` +
+      `• \`add @user to tentative\` - Add user to Tentative\n\n` +
+      `Type \`done\` when finished.`;
 
+    // Ensure stage is recorded before replying so incoming messages are routed correctly
     pendingEdits.set(userId, { eventId, stage: 'manage_responses' });
+    try {
+      await message.reply(helpText);
+    } catch (err) {
+      console.error('DMHandler: failed to send manage responses helpText:', err);
+      // Fallback: attempt to DM directly
+      try {
+        await message.author.send(helpText);
+      } catch (e) {
+        console.error('DMHandler: fallback DM failed for manage responses:', e);
+      }
+    }
   }
 
   private async handleManageResponsesInput(message: Message, eventId: string): Promise<void> {
     const userId = message.author.id;
     const content = message.content.toLowerCase().trim();
 
+    console.debug(`DMHandler.handleManageResponsesInput: ${userId} -> "${content}" for event ${eventId}`);
+
     if (content === 'done') {
       pendingEdits.delete(userId);
-      await message.reply('✅ Done managing responses.');
+      try {
+        await message.reply('✅ Done managing responses.');
+      } catch (err) {
+        console.error('DMHandler: failed to send done reply:', err);
+        try {
+          await message.author.send('✅ Done managing responses.');
+        } catch (e) {
+          console.error('DMHandler: fallback send failed for done message:', e);
+        }
+      }
       return;
     }
 
