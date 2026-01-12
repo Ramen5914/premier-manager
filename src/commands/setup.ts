@@ -386,7 +386,23 @@ export class Setup {
 
     // Generate 35 events (5 per week for 7 weeks, except Week 7 has special schedule)
     const events: PremierEvent[] = [];
-    const timezone = 'America/Los_Angeles';
+
+    // Helper to create PST date with specific time
+    function createPSTDate(baseDate: Date, daysOffset: number, hour: number, minute = 0): Date {
+      const targetDate = new Date(baseDate);
+      targetDate.setDate(baseDate.getDate() + daysOffset);
+
+      // Create date string in PST using Intl
+      const year = targetDate.getFullYear();
+      const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const day = String(targetDate.getDate()).padStart(2, '0');
+      const hours = String(hour).padStart(2, '0');
+      const minutes = String(minute).padStart(2, '0');
+
+      // Create ISO string and parse as PST
+      const isoString = `${year}-${month}-${day}T${hours}:${minutes}:00-08:00`;
+      return new Date(isoString);
+    }
 
     for (let week = 0; week < 7; week++) {
       const weekNumber = week + 1;
@@ -399,16 +415,8 @@ export class Setup {
 
       // Wednesday Practice: 7pm-8pm (skip on Week 7)
       if (!isWeek7) {
-        const wedPractice = new Date(
-          baseDate.toLocaleString('en-US', {
-            timeZone: timezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }) + ' 19:00:00',
-        );
-        const wedPracticeEnd = new Date(wedPractice);
-        wedPracticeEnd.setHours(wedPracticeEnd.getHours() + 1);
+        const wedPractice = createPSTDate(baseDate, 0, 19); // 7pm PST
+        const wedPracticeEnd = createPSTDate(baseDate, 0, 20); // 8pm PST
 
         events.push({
           week: weekNumber,
@@ -430,23 +438,13 @@ export class Setup {
       }
 
       // Thursday Match: 7pm-8pm
-      const thuMatch = new Date(baseDate);
-      thuMatch.setDate(baseDate.getDate() + 1);
-      const thuMatchDate = new Date(
-        thuMatch.toLocaleString('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }) + ' 19:00:00',
-      );
-      const thuMatchEnd = new Date(thuMatchDate);
-      thuMatchEnd.setHours(thuMatchEnd.getHours() + 1);
+      const thuMatch = createPSTDate(baseDate, 1, 19); // 7pm PST Thursday
+      const thuMatchEnd = createPSTDate(baseDate, 1, 20); // 8pm PST Thursday
 
       events.push({
         week: weekNumber,
         type: 'Match',
-        startTimestamp: Math.floor(thuMatchDate.getTime() / 1000),
+        startTimestamp: Math.floor(thuMatch.getTime() / 1000),
         endTimestamp: Math.floor(thuMatchEnd.getTime() / 1000),
         day: 'Thursday',
         map,
@@ -463,23 +461,13 @@ export class Setup {
 
       // Friday Practice: 8pm-9pm (skip on Week 7)
       if (!isWeek7) {
-        const friPractice = new Date(baseDate);
-        friPractice.setDate(baseDate.getDate() + 2);
-        const friPracticeDate = new Date(
-          friPractice.toLocaleString('en-US', {
-            timeZone: timezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }) + ' 20:00:00',
-        );
-        const friPracticeEnd = new Date(friPracticeDate);
-        friPracticeEnd.setHours(friPracticeEnd.getHours() + 1);
+        const friPractice = createPSTDate(baseDate, 2, 20); // 8pm PST Friday
+        const friPracticeEnd = createPSTDate(baseDate, 2, 21); // 9pm PST Friday
 
         events.push({
           week: weekNumber,
           type: 'Practice',
-          startTimestamp: Math.floor(friPracticeDate.getTime() / 1000),
+          startTimestamp: Math.floor(friPractice.getTime() / 1000),
           endTimestamp: Math.floor(friPracticeEnd.getTime() / 1000),
           day: 'Friday',
           map,
@@ -496,23 +484,13 @@ export class Setup {
       }
 
       // Saturday Match: 8pm-9pm
-      const satMatch = new Date(baseDate);
-      satMatch.setDate(baseDate.getDate() + 3);
-      const satMatchDate = new Date(
-        satMatch.toLocaleString('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }) + ' 20:00:00',
-      );
-      const satMatchEnd = new Date(satMatchDate);
-      satMatchEnd.setHours(satMatchEnd.getHours() + 1);
+      const satMatch = createPSTDate(baseDate, 3, 20); // 8pm PST Saturday
+      const satMatchEnd = createPSTDate(baseDate, 3, 21); // 9pm PST Saturday
 
       events.push({
         week: weekNumber,
         type: 'Match',
-        startTimestamp: Math.floor(satMatchDate.getTime() / 1000),
+        startTimestamp: Math.floor(satMatch.getTime() / 1000),
         endTimestamp: Math.floor(satMatchEnd.getTime() / 1000),
         day: 'Saturday',
         map,
@@ -528,27 +506,15 @@ export class Setup {
       });
 
       // Sunday: Match for Weeks 1-6 (7pm-8pm), Playoff for Week 7 (7pm-7:15pm)
-      const sunMatch = new Date(baseDate);
-      sunMatch.setDate(baseDate.getDate() + 4);
-      const sunMatchDate = new Date(
-        sunMatch.toLocaleString('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }) + ' 19:00:00',
-      );
-      const sunMatchEnd = new Date(sunMatchDate);
-      if (isWeek7) {
-        sunMatchEnd.setMinutes(sunMatchEnd.getMinutes() + 15); // 7:15pm for Playoff
-      } else {
-        sunMatchEnd.setHours(sunMatchEnd.getHours() + 1); // 8pm for regular Match
-      }
+      const sunMatch = createPSTDate(baseDate, 4, 19); // 7pm PST Sunday
+      const sunMatchEnd = isWeek7
+        ? createPSTDate(baseDate, 4, 19, 15) // 7:15pm PST for Playoff
+        : createPSTDate(baseDate, 4, 20); // 8pm PST for regular Match
 
       events.push({
         week: weekNumber,
         type: isWeek7 ? 'Playoff' : 'Match',
-        startTimestamp: Math.floor(sunMatchDate.getTime() / 1000),
+        startTimestamp: Math.floor(sunMatch.getTime() / 1000),
         endTimestamp: Math.floor(sunMatchEnd.getTime() / 1000),
         day: 'Sunday',
         map,
