@@ -3,12 +3,14 @@ import {
   MessageFlags,
   type CommandInteraction,
   EmbedBuilder,
+  type Client,
 } from 'discord.js';
 import { Discord, Guard, Slash, SlashOption } from 'discordx';
 import Enmap from 'enmap';
 import { IsManager } from '../guards/manager.js';
 import { IsAdmin } from '../guards/admin.js';
 import { OrGuard } from '../guards/or.js';
+import { sendEventAnnouncements } from '../services/scheduler.js';
 
 @Discord()
 export class Slashes {
@@ -128,5 +130,37 @@ export class Slashes {
       embeds: [embed],
       flags: [MessageFlags.Ephemeral],
     });
+  }
+
+  @Slash({ description: 'Manually trigger event announcements for current week' })
+  @Guard(OrGuard(IsManager, IsAdmin))
+  async announceevents(interaction: CommandInteraction, client: Client): Promise<void> {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+    try {
+      await sendEventAnnouncements(client);
+
+      const embed = new EmbedBuilder()
+        .setTitle('Announcements Sent')
+        .setDescription('Event announcements for the current week have been sent/updated.')
+        .setColor(0x98c379)
+        .setTimestamp();
+
+      await interaction.editReply({
+        embeds: [embed],
+      });
+    } catch (error) {
+      const embed = new EmbedBuilder()
+        .setTitle('Error')
+        .setDescription(
+          `Failed to send announcements: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        .setColor(0xe06c75)
+        .setTimestamp();
+
+      await interaction.editReply({
+        embeds: [embed],
+      });
+    }
   }
 }
