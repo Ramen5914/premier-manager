@@ -19,7 +19,11 @@ import { IsManager } from '../guards/manager.js';
 import { OrGuard } from '../guards/or.js';
 import { formatEventDate } from '../utils/date.js';
 import type { PremierEvent } from '../types/event.js';
-import { sendEventAnnouncements } from '../services/scheduler.js';
+import {
+  sendEventAnnouncements,
+  scheduleAll,
+  clearScheduledTimers,
+} from '../services/scheduler.js';
 
 @Discord()
 export class Setup {
@@ -562,6 +566,10 @@ export class Setup {
 
     // Store events
     this.db.set('scheduledEvents', events);
+
+    // Clear old timers and schedule new ones for all events
+    clearScheduledTimers();
+    scheduleAll(client);
 
     // Create success message
     const firstEvent = events[0];
