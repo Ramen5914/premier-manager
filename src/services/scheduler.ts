@@ -20,6 +20,7 @@ const db = new Enmap({ name: 'premier_data' });
 export async function sendEventAnnouncements(bot: Client): Promise<void> {
   try {
     const scheduledEvents = (db.get('scheduledEvents') as PremierEvent[]) || [];
+    console.log(`[Scheduler] Found ${scheduledEvents.length} total events in database`);
     const now = Math.floor(Date.now() / 1000);
 
     // Get current week's events that haven't passed
@@ -48,7 +49,9 @@ export async function sendEventAnnouncements(bot: Client): Promise<void> {
       return eventMonday.getTime() === currentMonday.getTime() && event.endTimestamp > now;
     });
 
+    console.log(`[Scheduler] Found ${currentEvents.length} events for current week`);
     if (currentEvents.length === 0) {
+      console.log('[Scheduler] No events to announce for current week');
       return;
     }
 
@@ -655,7 +658,18 @@ function scheduleTimersForEvent(bot: Client, event: PremierEvent): void {
   if (timeouts.length > 0) scheduledTimeouts.set(event.eventId, timeouts);
 }
 
-function scheduleAll(bot: Client): void {
+export function scheduleAll(bot: Client): void {
   const events = (db.get('scheduledEvents') as PremierEvent[]) || [];
+  console.log(`[Scheduler] Scheduling timers for ${events.length} events`);
   for (const e of events) scheduleTimersForEvent(bot, e);
+}
+
+export function clearScheduledTimers(): void {
+  console.log(`[Scheduler] Clearing ${scheduledTimeouts.size} scheduled timers`);
+  for (const timeouts of scheduledTimeouts.values()) {
+    for (const timeout of timeouts) {
+      clearTimeout(timeout);
+    }
+  }
+  scheduledTimeouts.clear();
 }
